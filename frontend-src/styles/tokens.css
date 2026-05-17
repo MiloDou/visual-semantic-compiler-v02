@@ -1,0 +1,52 @@
+:root {
+  --bg:   #080d0a;
+  --bg1:  #0c1210;
+  --bg2:  #101a15;
+  --bg3:  #152019;
+
+  --bdr:  #2a4a3520;
+  --bdr2: #3a6a4838;
+
+  --acc:  #a855f7;
+  --acc2: #7c3aed;
+  --acc3: #4ade80;
+
+  --txt:  #86efac;
+  --txt2: #4ade80;
+  --txt3: #166534;
+
+  --sel:  #4c1d95;
+  --sel2: #5b21b6;
+  --err:  #f43f5e;
+
+  --c-kw: #c084fc;
+  --c-ty: #4ade80;
+  --c-fn: #86efac;
+  --c-cm: #166534;
+  --c-st: #f0abfc;
+  --c-nm: #a5f3fc;
+  --c-pp: #e879f9;
+
+  --font-mono: 'Share Tech Mono', 'Courier New', monospace;
+  --font-ui:   'Share Tech Mono', 'Courier New', monospace;
+
+  --fs-xxs: 7px;
+  --fs-xs:  8px;
+  --fs-sm:  9px;
+  --fs-md:  10px;
+  --fs-lg:  11px;
+  --fs-xl:  13px;
+
+  --radius-none: 0px;
+  --radius-sm:   2px;
+  --radius-md:   4px;
+  --radius-pill: 50px;
+
+  --topnav-h:    42px;
+  --sidebar-w:  150px;
+  --panel-hdr-h: 26px;
+  --scrollbar-w:  5px;
+
+  --transition-fast: .1s ease;
+  --transition-mid:  .15s ease;
+}

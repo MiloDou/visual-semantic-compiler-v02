@@ -1,0 +1,61 @@
+.canvas-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg1);
+  overflow: hidden;
+  min-width: 0;
+}
+.canvas-tabs {
+  height: 36px;
+  background: linear-gradient(90deg, rgba(16,20,27,0.96), rgba(12,16,22,0.96));
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  flex-shrink: 0;
+}
+.ctab {
+  background: transparent;
+  border: none;
+  color: var(--txt2);
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  padding: 0 14px;
+  height: 100%;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: background .15s, color .15s;
+  border-radius: 999px;
+}
+.ctab:hover { background: rgba(255,255,255,0.04); color: var(--txt); }
+.ctab.active { background: rgba(74,158,255,0.18); color: #fff; font-weight: 700; }
+.canvas-label-right {
+  margin-left: auto;
+  font-size: 8px;
+  color: var(--txt3);
+  letter-spacing: 1px;
+  padding-right: 10px;
+}
+.canvas-flow, .canvas-editor {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+.canvas-flow {
+  background: linear-gradient(180deg, rgba(10,12,16,0.98), rgba(13,17,22,0.95));
+}
+.canvas-editor {
+  background: var(--bg);
+}
+.react-flow__controls-button {
+  background: rgba(255,255,255,0.06) !important;
+  border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+  fill: var(--txt2) !important;
+}
+.react-flow__controls-button:hover { background: rgba(255,255,255,0.1) !important; fill: var(--txt) !important; }
+.react-flow__edge-path { stroke: var(--acc2) !important; }
+.react-flow__selection { background: rgba(124,58,237,.08) !important; border: 1px solid rgba(124,58,237,.2) !important; }
+

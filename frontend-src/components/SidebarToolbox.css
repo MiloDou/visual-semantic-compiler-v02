@@ -1,0 +1,78 @@
+.sidebar {
+  width: 170px;
+  background: linear-gradient(180deg, rgba(11,14,19,0.98), rgba(15,19,26,0.98));
+  border-right: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.sb-header { padding: 14px 14px 8px; }
+.sb-title { font-size: 8px; color: var(--txt2); letter-spacing: 1.6px; text-transform: uppercase; }
+.sb-subtitle { font-size: 7px; color: var(--txt3); letter-spacing: 1px; margin-top: 4px; }
+
+.new-node-btn {
+  margin: 8px 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--txt);
+  font-size: 9px;
+  padding: 8px 10px;
+  letter-spacing: 1px;
+  width: calc(100% - 24px);
+  border-radius: 10px;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.new-node-btn:hover { background: rgba(124, 58, 237, 0.14); border-color: rgba(124, 58, 237, 0.28); color: #fff; }
+
+.sb-divider { height: 1px; background: rgba(255,255,255,0.06); margin: 6px 0; flex-shrink: 0; }
+
+.sb-nav { display: flex; flex-direction: column; }
+
+.sb-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  color: var(--txt2);
+}
+.sb-item:hover { background: rgba(255,255,255,0.04); color: var(--txt); }
+.sb-item.active { background: rgba(74,158,255,0.16); color: #fff; }
+.sb-item.active .sb-icon { color: #8cc6ff; }
+
+.sb-icon { font-size: 12px; color: var(--txt3); width: 16px; text-align: center; }
+.sb-label { font-size: 10px; color: inherit; letter-spacing: 0.4px; }
+
+.sb-toolnodes { padding: 8px 0 12px; }
+.sb-section-lbl {
+  font-size: 8px;
+  color: var(--txt3);
+  letter-spacing: 1px;
+  padding: 6px 14px 6px;
+  text-transform: uppercase;
+}
+
+.tool-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 8px;
+  cursor: grab;
+  border: 1px solid transparent;
+  margin: 4px 10px;
+  gap: 6px;
+  border-radius: 12px;
+  transition: border-color .15s, background .15s;
+}
+.tool-node:hover { border-color: rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); }
+.tool-node:hover svg ellipse,
+.tool-node:hover svg rect,
+.tool-node:hover svg polygon { stroke: var(--acc) !important; }
+.tool-node:active { cursor: grabbing; background: rgba(255,255,255,0.06); }
+
+.tool-lbl { font-size: 8px; color: var(--txt3); letter-spacing: 0.4px; text-align: center; }
+

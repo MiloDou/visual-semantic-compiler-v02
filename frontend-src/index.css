@@ -1,0 +1,37 @@
+/* ── CYBER_DRIVE Global Styles ── */
+@import './styles/tokens.css';
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  font-family: var(--font-mono);
+  color: var(--txt);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(74, 158, 255, 0.18);
+  color: #fff;
+}
+
+button, input, textarea, select {
+  font-family: inherit;
+}
+
+button { cursor: pointer; }
+input  { outline: none; }
+
+/* Scrollbar global */
+::-webkit-scrollbar        { width: 6px; height: 6px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.12); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+

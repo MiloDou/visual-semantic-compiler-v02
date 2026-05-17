@@ -1,0 +1,79 @@
+.flow-node-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 100px;
+  min-height: 40px;
+  background: var(--bg2);
+  border: 1.5px solid rgba(255,255,255,0.12);
+  padding: 6px 14px;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: var(--txt);
+  cursor: move;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+
+.flow-node-wrap:hover { border-color: var(--acc); }
+.flow-node-wrap.selected { border-color: var(--acc) !important; box-shadow: 0 0 0 1px var(--acc); }
+
+/* OVAL */
+.shape-oval { border-radius: 50px; }
+
+/* DIAMOND */
+.shape-diamond {
+  border: none;
+  background: transparent;
+  width: 110px; height: 60px;
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+  background: var(--bg2);
+  outline: 1.5px solid rgba(255,255,255,0.12);
+}
+.shape-diamond:hover { outline-color: var(--acc); }
+.shape-diamond.selected { outline-color: var(--acc); }
+
+/* PARALLELOGRAM */
+.shape-parallelogram { transform: skew(-10deg); }
+.shape-parallelogram .flow-node-label { transform: skew(10deg); }
+
+/* HEXAGON */
+.shape-hexagon {
+  border: none;
+  background: transparent;
+  clip-path: polygon(15% 0%, 85% 0%, 100% 50%, 85% 100%, 15% 100%, 0% 50%);
+  background: var(--bg2);
+  outline: 1.5px solid rgba(255,255,255,0.12);
+  padding: 8px 22px;
+}
+.shape-hexagon:hover { outline-color: var(--acc); }
+.shape-hexagon.selected { outline-color: var(--acc); }
+
+.flow-node-label {
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: .3px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* ReactFlow handles */
+.rf-handle {
+  width: 7px !important;
+  height: 7px !important;
+  background: var(--bg2) !important;
+  border: 1px solid var(--acc) !important;
+  border-radius: 0 !important;
+}
+.rf-handle:hover { background: var(--acc) !important; }
+
+/* SI / NO labels on diamond */
+.edge-label {
+  position: absolute;
+  font-size: 8px;
+  color: var(--acc);
+  pointer-events: none;
+  letter-spacing: .5px;
+}
+.si-label { right: -18px; top: 50%; transform: translateY(-50%); }
+.no-label { bottom: -16px; left: 50%; transform: translateX(-50%); color: var(--err); }

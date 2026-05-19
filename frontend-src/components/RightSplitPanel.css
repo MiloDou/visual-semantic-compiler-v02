@@ -106,3 +106,37 @@
 .sym-class { color: var(--txt3); font-size: 9px; min-width: 50px; }
 .sym-params { color: var(--txt2); font-size: 9px; }
 
+.echo-output {
+  padding: 8px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.echo-header {
+  font-size: var(--fs-sm);
+  color: var(--acc3);
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--bdr2);
+}
+
+.echo-line {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: var(--fs-lg);
+}
+
+.echo-prompt {
+  color: var(--txt3);
+  font-size: var(--fs-xs);
+  min-width: 44px;
+}
+
+.echo-val {
+  color: var(--acc3);
+  font-family: var(--font-mono);
+}
+

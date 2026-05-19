@@ -1016,6 +1016,103 @@ def ast_a_json(nodo):
 # ─────────────────────────────────────────────
 # PIPELINE PRINCIPAL (usado por la API)
 # ─────────────────────────────────────────────
+def simular_echo(arbol):
+    """Simula la ejecución del programa y retorna las líneas de salida."""
+    output = []
+    memoria = {}
+
+    def evaluar(nodo):
+        if isinstance(nodo, NodoNumero):
+            return int(nodo.valor[1])
+        if isinstance(nodo, NodoFloat):
+            return float(nodo.valor[1])
+        if isinstance(nodo, NodoIdent):
+            return memoria.get(nodo.nombre[1], '?')
+        if isinstance(nodo, NodoOperacion):
+            izq = evaluar(nodo.izquierda)
+            der = evaluar(nodo.derecha)
+            if '?' in [izq, der]: return '?'
+            op = nodo.operador[1]
+            if op == '+': return izq + der
+            if op == '-': return izq - der
+            if op == '*': return izq * der
+            if op == '/' and der != 0: return izq // der if isinstance(izq, int) and isinstance(der, int) else izq / der
+            return '?'
+        if isinstance(nodo, NodoLlamadaFuncion):
+            # buscar la funcion en el arbol y ejecutarla
+            func = next((f for f in arbol.funciones if f.nombre[1] == nodo.nombre_funcion), None)
+            if not func: return '?'
+            mem_local = dict(memoria)
+            for param, arg in zip(func.parametros, nodo.argumentos):
+                mem_local[param.nombre[1]] = evaluar(arg)
+            return ejecutar_cuerpo(func.cuerpo, mem_local)
+        return '?'
+
+    def ejecutar_cuerpo(cuerpo, mem):
+        for inst in cuerpo:
+            if isinstance(inst, NodoAsignacion):
+                val = evaluar_con_mem(inst.expresion, mem)
+                mem[inst.nombre[1]] = val
+            elif isinstance(inst, NodoRetorno):
+                return evaluar_con_mem(inst.expresion, mem)
+            elif isinstance(inst, (NodoPrint, NodoPrintln)):
+                val = evaluar_con_mem(inst.expresion, mem)
+                output.append(str(val))
+            elif isinstance(inst, NodoIf):
+                cond = evaluar_con_mem(inst.condicion, mem)
+                if cond and cond != '?':
+                    ejecutar_cuerpo(inst.cuerpo_if, mem)
+                elif inst.cuerpo_else:
+                    ejecutar_cuerpo(inst.cuerpo_else, mem)
+            elif isinstance(inst, NodoWhile):
+                limite = 100
+                while limite > 0:
+                    cond = evaluar_con_mem(inst.condicion, mem)
+                    if not cond or cond == '?': break
+                    ejecutar_cuerpo(inst.cuerpo, mem)
+                    limite -= 1
+            elif isinstance(inst, NodoFor):
+                ejecutar_cuerpo([inst.inicializacion], mem)
+                limite = 100
+                while limite > 0:
+                    cond = evaluar_con_mem(inst.condicion, mem)
+                    if not cond or cond == '?': break
+                    ejecutar_cuerpo(inst.cuerpo, mem)
+                    ejecutar_cuerpo([inst.incremento], mem)
+                    limite -= 1
+        return None
+
+    def evaluar_con_mem(nodo, mem):
+        if isinstance(nodo, NodoNumero):
+            return int(nodo.valor[1])
+        if isinstance(nodo, NodoFloat):
+            return float(nodo.valor[1])
+        if isinstance(nodo, NodoIdent):
+            return mem.get(nodo.nombre[1], '?')
+        if isinstance(nodo, NodoOperacion):
+            izq = evaluar_con_mem(nodo.izquierda, mem)
+            der = evaluar_con_mem(nodo.derecha, mem)
+            if '?' in [str(izq), str(der)]: return '?'
+            op = nodo.operador[1]
+            if op == '+': return izq + der
+            if op == '-': return izq - der
+            if op == '*': return izq * der
+            if op == '/' and der != 0: return izq // der if isinstance(izq, int) and isinstance(der, int) else izq / der
+            return '?'
+        if isinstance(nodo, NodoLlamadaFuncion):
+            func = next((f for f in arbol.funciones if f.nombre[1] == nodo.nombre_funcion), None)
+            if not func: return '?'
+            mem_local = dict(mem)
+            for param, arg in zip(func.parametros, nodo.argumentos):
+                mem_local[param.nombre[1]] = evaluar_con_mem(arg, mem_local)
+            return ejecutar_cuerpo(func.cuerpo, mem_local)
+        return '?'
+
+    if arbol.main:
+        ejecutar_cuerpo(arbol.main.cuerpo, memoria)
+
+    return output
+
 def compilar_codigo(codigo_fuente):
     """
     Ejecuta el pipeline completo y devuelve un dict JSON-serializable con:
@@ -1034,6 +1131,7 @@ def compilar_codigo(codigo_fuente):
         'traducciones': {'python': '', 'javascript': '', 'ruby': '', 'rust': ''},
         'cpp': codigo_fuente,
         'mermaid': '',
+        'echo': [], 
     }
 
 
@@ -1093,6 +1191,12 @@ def compilar_codigo(codigo_fuente):
         resultado['mermaid'] = ast_a_mermaid(arbol)
     except Exception as e:
         resultado['mermaid'] = f'flowchart TD\n    ERR["Error: {e}"]'
+
+    # 7. ECHO
+    try:
+        resultado['echo'] = simular_echo(arbol)
+    except Exception as e:
+        resultado['echo'] = [f'Error en simulación: {e}']
 
     resultado['ok'] = len(resultado['errores']) == 0
     return resultado

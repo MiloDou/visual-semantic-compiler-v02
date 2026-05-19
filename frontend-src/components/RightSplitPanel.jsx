@@ -1,3 +1,4 @@
+//RightSplitPanel.jsx
 import React, { useState } from 'react'
 import Editor from '@monaco-editor/react'
 import './RightSplitPanel.css'
@@ -57,12 +58,13 @@ const CONSOLE_TABS = [
   { key: 'tokens',    label: 'TOKENS'   },
   { key: 'ast',       label: 'AST'      },
   { key: 'simbolos',  label: 'SIMBOLOS' },
+  { key: 'echo',      label: 'ECHO'     },
 ]
 
 export default function RightSplitPanel({
   width, fontSize,
   cppCode, asmCode, consoleLogs,
-  tokens, ast, tablaSimbolos, traducciones
+  tokens, ast, tablaSimbolos, traducciones, echoOutput
 }) {
   const [codeTab,    setCodeTab]    = useState('cpp')
   const [consoleTab, setConsoleTab] = useState('terminal')
@@ -183,7 +185,26 @@ export default function RightSplitPanel({
             }
           </div>
         )}
+        {consoleTab === 'echo' && (
+          <div className="console-body">
+            {!echoOutput || echoOutput.length === 0 ? (
+              <span className="con-info">Sin salida. Ejecuta COMPILE_RUN.</span>
+            ) : (
+            <div className="echo-output">
+              <div className="echo-header">▶ PROGRAM OUTPUT</div>
+              {echoOutput.map((line, i) => (
+                <div key={i} className="echo-line">
+                  <span className="echo-prompt">out[{i}]</span>
+                  <span className="echo-val">{line}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       </div>
     </div>
   )
 }
+
+

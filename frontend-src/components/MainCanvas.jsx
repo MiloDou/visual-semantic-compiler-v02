@@ -1,3 +1,4 @@
+//MainCanvas.jsx
 import React, { useCallback, useState, useEffect, useRef } from 'react'
 import ReactFlow, {
   Background, Controls, MiniMap,
@@ -71,7 +72,7 @@ function beforeMount(monaco) {
 
 const TABS = ['FLOWCHART', 'EDITOR']
 
-export default function MainCanvas({ sourceCode, onCodeChange, mermaidCode }) {
+export default function MainCanvas({ sourceCode, onCodeChange, mermaidCode, mermaidSvgRef }) {
   const [activeTab, setActiveTab] = useState('EDITOR')
   const [nodes, setNodes, onNodesChange] = useNodesState(INITIAL_NODES)
   const [edges, setEdges, onEdgesChange] = useEdgesState(INITIAL_EDGES)
@@ -130,7 +131,9 @@ export default function MainCanvas({ sourceCode, onCodeChange, mermaidCode }) {
         <div className="canvas-flow">
           {mermaidCode ? (
             <div style={{ width: '100%', height: '100%', overflow: 'auto', padding: '1rem', background: '#080d0a' }}>
-              <div className="mermaid" ref={mermaidRef} />
+              <div className="mermaid" ref={(el) => {
+                mermaidRef.current = el
+                if (mermaidSvgRef) mermaidSvgRef.current = el }} />
             </div>
           ) : (
             <ReactFlow

@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react'
+//App.jsx
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import TopNavBar       from './components/TopNavBar.jsx'
 import SidebarToolbox  from './components/SidebarToolbox.jsx'
 import MainCanvas      from './components/MainCanvas.jsx'
@@ -34,6 +35,7 @@ export default function App() {
   const [tablaSimbolos, setTablaSimbolos] = useState({})
   const [traducciones,  setTraducciones]  = useState({ python: '', javascript: '', ruby: '', rust: '' })
   const [mermaidCode,   setMermaidCode]   = useState('')
+  const [echoOutput,    setEchoOutput]    = useState([])
   const [isCompiling,   setIsCompiling]   = useState(false)
   const [buildStatus,   setBuildStatus]   = useState('VISUAL')
   const [ramUsage,      setRamUsage]      = useState('64K')
@@ -124,6 +126,9 @@ export default function App() {
       if (r.mermaid) {
         setMermaidCode(r.mermaid)
       }
+      if (r.echo) {
+        setEchoOutput(r.echo)
+      }
       if (r.cpp) setCppCode(r.cpp)
 
       if (r.ok) {
@@ -148,7 +153,9 @@ export default function App() {
     }
   }, [isCompiling, sourceCode, filename, buildStatus])
 
-  const handleCargarArchivo = useCallback((e) => {
+const mermaidSvgRef = useRef(null)
+
+const handleCargarArchivo = useCallback((e) => {
   const file = e.target.files[0]
   if (!file) return
   const reader = new FileReader()
@@ -159,16 +166,6 @@ export default function App() {
   reader.readAsText(file)
   e.target.value = ''
 }, [])
-
-const handleDescargarArchivo = useCallback(() => {
-  const blob = new Blob([sourceCode], { type: 'text/plain' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
-}, [sourceCode, filename])
 
   return (
     <div className="app-layout">
@@ -184,12 +181,21 @@ const handleDescargarArchivo = useCallback(() => {
         onFontSize={changeFontSize}
       />
       <div className="app-body" style={{ '--fs-base': `${fontSize}px` }}>
-        <SidebarToolbox width={sidebarW} />
+        <SidebarToolbox
+        width={sidebarW}
+        onCargar={handleCargarArchivo}
+        cppCode={cppCode}
+        asmCode={asmCode}
+        traducciones={traducciones}
+        mermaidSvgRef={mermaidSvgRef}
+        />
+
         <div className="resize-handle left" onMouseDown={startResize('left')} />
         <MainCanvas
           sourceCode={sourceCode}
           onCodeChange={setSourceCode}
           mermaidCode={mermaidCode}
+          mermaidSvgRef={mermaidSvgRef}
         />
         <div className="resize-handle right" onMouseDown={startResize('right')} />
         <RightSplitPanel
@@ -202,6 +208,7 @@ const handleDescargarArchivo = useCallback(() => {
           ast={ast}
           tablaSimbolos={tablaSimbolos}
           traducciones={traducciones}
+          echoOutput={echoOutput}
         />
       </div>
     </div>

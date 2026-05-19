@@ -59,3 +59,52 @@
 .react-flow__edge-path { stroke: var(--acc2) !important; }
 .react-flow__selection { background: rgba(124,58,237,.08) !important; border: 1px solid rgba(124,58,237,.2) !important; }
 
+/* ── Mermaid empty placeholder ─────────────────────────────── */
+.mermaid-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 8px;
+  color: var(--txt3);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: .5px;
+}
+.mermaid-empty small {
+  font-size: 9px;
+  opacity: .7;
+  max-width: 260px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* ── Flow help panel (top-right overlay) ───────────────────── */
+.flow-help-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(8,13,10,0.88);
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 4px 10px;
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  color: var(--txt3);
+  letter-spacing: .5px;
+  backdrop-filter: blur(4px);
+  border-radius: 2px;
+}
+.flow-clear-btn {
+  background: rgba(244,63,94,0.1);
+  border: 1px solid rgba(244,63,94,0.3);
+  color: #f43f5e;
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  letter-spacing: 1px;
+  padding: 2px 8px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background .15s;
+}
+.flow-clear-btn:hover { background: rgba(244,63,94,0.2); }

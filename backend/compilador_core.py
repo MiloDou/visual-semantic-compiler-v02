@@ -17,7 +17,7 @@ token_patron = {
     "IDENTIFIER": r'\b[a-zA-Z_][a-zA-Z0-9_]*\b',
     "FLOAT":      r'\b\d+\.\d+\b',
     "NUMBER":     r'\b\d+\b',
-    "OPERATOR":   r'\+\+|--|<<|[+\-*/=<>]',
+    "OPERATOR":   r'\+\+|--|<<|==|!=|<=|>=|[+\-*/=<>]',
     "DELIMITER":  r'[(),;{}]',
     "WHITESPACE": r'\s+',
 }
@@ -39,6 +39,7 @@ def identificar_tokens(texto):
 # NODOS AST
 # ─────────────────────────────────────────────
 _asm_data = []   # acumulador global de sección .data para assembler
+_asm_label_counter = 0
 
 class NodoAST:
     def traducirPy(self):   raise NotImplementedError
@@ -231,6 +232,15 @@ class NodoOperacion(NodoAST):
         elif op == '/':
             codigo.append("    xor   edx, edx")
             codigo.append("    idiv  ebx")
+        elif op in ['==', '!=', '>', '<', '>=', '<=']:
+            codigo.append("    cmp   eax, ebx")
+            if op == '==': codigo.append("    sete  al")
+            elif op == '!=': codigo.append("    setne al")
+            elif op == '>':  codigo.append("    setg  al")
+            elif op == '<':  codigo.append("    setl  al")
+            elif op == '>=': codigo.append("    setge al")
+            elif op == '<=': codigo.append("    setle al")
+            codigo.append("    movzx eax, al")
         return "\n".join(codigo)
 
 
@@ -323,7 +333,29 @@ class NodoIf(NodoAST):
             out += f" else {{\n    {ebod}\n}}"
         return out
 
-    def generarAssembler(self): return "; if/else — pendiente"
+    def generarAssembler(self):
+        global _asm_label_counter
+        _asm_label_counter += 1
+        lbl = f"if_{_asm_label_counter}"
+        
+        codigo = []
+        codigo.append(f"    ; ── IF ──────────────────────────────────────────")
+        codigo.append(self.condicion.generarAssembler())
+        codigo.append("    cmp   eax, 0")
+        codigo.append(f"    je    .{lbl}_else")
+        
+        for inst in self.cuerpo_if:
+            codigo.append(inst.generarAssembler())
+            
+        codigo.append(f"    jmp   .{lbl}_end")
+        codigo.append(f".{lbl}_else:")
+        
+        if self.cuerpo_else:
+            for inst in self.cuerpo_else:
+                codigo.append(inst.generarAssembler())
+                
+        codigo.append(f".{lbl}_end:")
+        return "\n".join(codigo)
 
 
 class NodoWhile(NodoAST):
@@ -351,7 +383,24 @@ class NodoWhile(NodoAST):
         body = "\n    ".join(c.traducirRust() for c in self.cuerpo)
         return f"while {cond} {{\n    {body}\n}}"
 
-    def generarAssembler(self): return "; while — pendiente"
+    def generarAssembler(self):
+        global _asm_label_counter
+        _asm_label_counter += 1
+        lbl = f"while_{_asm_label_counter}"
+        
+        codigo = []
+        codigo.append(f"    ; ── WHILE ───────────────────────────────────────")
+        codigo.append(f".{lbl}_start:")
+        codigo.append(self.condicion.generarAssembler())
+        codigo.append("    cmp   eax, 0")
+        codigo.append(f"    je    .{lbl}_end")
+        
+        for inst in self.cuerpo:
+            codigo.append(inst.generarAssembler())
+            
+        codigo.append(f"    jmp   .{lbl}_start")
+        codigo.append(f".{lbl}_end:")
+        return "\n".join(codigo)
 
 
 class NodoFor(NodoAST):
@@ -386,7 +435,26 @@ class NodoFor(NodoAST):
         body = "\n    ".join(c.traducirRust() for c in self.cuerpo)
         return f"loop {{\n    {body}\n}}"
 
-    def generarAssembler(self): return "; for — pendiente"
+    def generarAssembler(self):
+        global _asm_label_counter
+        _asm_label_counter += 1
+        lbl = f"for_{_asm_label_counter}"
+        
+        codigo = []
+        codigo.append(f"    ; ── FOR ─────────────────────────────────────────")
+        codigo.append(self.inicializacion.generarAssembler())
+        codigo.append(f".{lbl}_start:")
+        codigo.append(self.condicion.generarAssembler())
+        codigo.append("    cmp   eax, 0")
+        codigo.append(f"    je    .{lbl}_end")
+        
+        for inst in self.cuerpo:
+            codigo.append(inst.generarAssembler())
+            
+        codigo.append(self.incremento.generarAssembler())
+        codigo.append(f"    jmp   .{lbl}_start")
+        codigo.append(f".{lbl}_end:")
+        return "\n".join(codigo)
 
 
 class NodoIdent(NodoAST):

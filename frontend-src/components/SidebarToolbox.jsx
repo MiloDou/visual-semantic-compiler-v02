@@ -1,4 +1,11 @@
-//SidebarToolbox.jsx
+//=============================================================================
+// SidebarToolbox.jsx — Barra lateral izquierda de herramientas
+//
+// Funcionalidades:
+//   • Paleta de nodos arrastrables (DRAG NODES) para el canvas React Flow
+//   • Gestión de archivos: abrir, exportar código (C, ASM, Python, JS, Ruby, Rust)
+//   • Exportar diagrama Mermaid como SVG
+//=============================================================================
 import React, { useState, useRef } from 'react'
 import './SidebarToolbox.css'
 
@@ -53,7 +60,21 @@ function descargar(contenido, nombre) {
   URL.revokeObjectURL(url)
 }
 
-export default function SidebarToolbox({ width, onCargar, cppCode, asmCode, traducciones, mermaidSvgRef }) {
+/**
+ * SidebarToolbox — Panel lateral izquierdo de herramientas.
+ *
+ * @param {object}   props
+ * @param {number}   props.width        - Ancho en píxeles
+ * @param {Function} props.onCargar     - Callback para cargar archivo de texto
+ * @param {string}   props.cCode        - Código C generado (para exportar)
+ * @param {string}   props.cppCode      - Alias legacy de cCode
+ * @param {string}   props.asmCode      - Código ensamblador generado
+ * @param {object}   props.traducciones - Traducciones { python, javascript, ruby, rust }
+ * @param {object}   props.mermaidSvgRef- Ref al elemento SVG de Mermaid
+ */
+export default function SidebarToolbox({ width, onCargar, cCode, cppCode, asmCode, traducciones, mermaidSvgRef }) {
+  // Compatibilidad: acepta cCode (nuevo) o cppCode (legacy)
+  const codeC  = cCode || cppCode || ''
   const [active, setActive] = useState('logs')
   const fileInputRef = useRef(null)
 
@@ -64,9 +85,9 @@ export default function SidebarToolbox({ width, onCargar, cppCode, asmCode, trad
 
   const handleExport = (key, ext) => {
     let contenido = ''
-    if (key === 'cpp') contenido = cppCode || ''
-    else if (key === 'asm') contenido = asmCode || ''
-    else contenido = traducciones?.[key] || ''
+    if (key === 'cpp' || key === 'c') contenido = codeC
+    else if (key === 'asm')           contenido = asmCode || ''
+    else                              contenido = traducciones?.[key] || ''
     descargar(contenido, `programa.${ext}`)
   }
 

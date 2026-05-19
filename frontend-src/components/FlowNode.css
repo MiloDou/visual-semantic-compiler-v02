@@ -1,63 +1,94 @@
+/* ── FlowNode base ─────────────────────────────────────────── */
 .flow-node-wrap {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 100px;
-  min-height: 40px;
+  min-width: 120px;
+  min-height: 48px;
   background: var(--bg2);
   border: 1.5px solid rgba(255,255,255,0.12);
-  padding: 6px 14px;
+  padding: 8px 16px;
   font-family: 'Courier New', monospace;
   font-size: 11px;
   color: var(--txt);
   cursor: move;
   transition: border-color .15s, box-shadow .15s, background .15s;
 }
+.flow-node-wrap:hover  { border-color: var(--acc); }
+.flow-node-wrap:hover .node-edit-hint { opacity: 1; }
+.flow-node-wrap.selected {
+  border-color: var(--acc) !important;
+  box-shadow: 0 0 0 1px var(--acc);
+}
 
-.flow-node-wrap:hover { border-color: var(--acc); }
-.flow-node-wrap.selected { border-color: var(--acc) !important; box-shadow: 0 0 0 1px var(--acc); }
+/* ── Inner layout ──────────────────────────────────────────── */
+.flow-node-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+  user-select: none;
+}
+.flow-node-type {
+  font-size: 8px;
+  letter-spacing: 1.2px;
+  opacity: 0.8;
+  text-transform: uppercase;
+}
+.flow-node-label {
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: .3px;
+  white-space: nowrap;
+}
 
-/* OVAL */
+/* ── Edit hint icon ────────────────────────────────────────── */
+.node-edit-hint {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  font-size: 9px;
+  color: var(--acc);
+  opacity: 0;
+  transition: opacity .15s;
+  pointer-events: none;
+}
+
+/* ── OVAL ──────────────────────────────────────────────────── */
 .shape-oval { border-radius: 50px; }
 
-/* DIAMOND */
+/* ── DIAMOND ───────────────────────────────────────────────── */
 .shape-diamond {
   border: none;
   background: transparent;
-  width: 110px; height: 60px;
+  width: 130px;
+  height: 70px;
   clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
   background: var(--bg2);
   outline: 1.5px solid rgba(255,255,255,0.12);
 }
-.shape-diamond:hover { outline-color: var(--acc); }
-.shape-diamond.selected { outline-color: var(--acc); }
+.shape-diamond:hover   { outline-color: var(--acc); }
+.shape-diamond.selected{ outline-color: var(--acc); }
 
-/* PARALLELOGRAM */
+/* ── PARALLELOGRAM ─────────────────────────────────────────── */
 .shape-parallelogram { transform: skew(-10deg); }
-.shape-parallelogram .flow-node-label { transform: skew(10deg); }
+.shape-parallelogram .flow-node-inner { transform: skew(10deg); }
 
-/* HEXAGON */
+/* ── HEXAGON ───────────────────────────────────────────────── */
 .shape-hexagon {
   border: none;
   background: transparent;
   clip-path: polygon(15% 0%, 85% 0%, 100% 50%, 85% 100%, 15% 100%, 0% 50%);
   background: var(--bg2);
   outline: 1.5px solid rgba(255,255,255,0.12);
-  padding: 8px 22px;
+  padding: 10px 26px;
 }
-.shape-hexagon:hover { outline-color: var(--acc); }
+.shape-hexagon:hover  { outline-color: var(--acc); }
 .shape-hexagon.selected { outline-color: var(--acc); }
 
-.flow-node-label {
-  font-weight: 600;
-  font-size: 11px;
-  letter-spacing: .3px;
-  white-space: nowrap;
-  user-select: none;
-}
-
-/* ReactFlow handles */
+/* ── ReactFlow handles ─────────────────────────────────────── */
 .rf-handle {
   width: 7px !important;
   height: 7px !important;
@@ -67,7 +98,7 @@
 }
 .rf-handle:hover { background: var(--acc) !important; }
 
-/* SI / NO labels on diamond */
+/* ── SI / NO labels on diamond ─────────────────────────────── */
 .edge-label {
   position: absolute;
   font-size: 8px;
@@ -75,5 +106,148 @@
   pointer-events: none;
   letter-spacing: .5px;
 }
-.si-label { right: -18px; top: 50%; transform: translateY(-50%); }
-.no-label { bottom: -16px; left: 50%; transform: translateX(-50%); color: var(--err); }
+.si-label { right: -20px; top: 50%; transform: translateY(-50%); }
+.no-label { bottom: -17px; left: 50%; transform: translateX(-50%); color: var(--err); }
+
+/* ═══════════════════════════════════════════════════════════════
+   NODE EDITOR MODAL
+══════════════════════════════════════════════════════════════ */
+.node-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0,0,0,.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+  animation: fadeIn .1s ease;
+}
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+
+.node-editor-modal {
+  background: #0e1612;
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 20px 60px rgba(0,0,0,.7), 0 0 0 1px rgba(74,222,128,.08);
+  min-width: 320px;
+  max-width: 420px;
+  width: 100%;
+  border-radius: 2px;
+  animation: slideUp .15s ease;
+  font-family: 'Courier New', monospace;
+}
+@keyframes slideUp {
+  from { transform: translateY(10px); opacity: 0 }
+  to   { transform: translateY(0);    opacity: 1 }
+}
+
+.node-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  border-left: 3px solid;
+}
+.ned-type {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  flex: 1;
+}
+.ned-id {
+  font-size: 9px;
+  color: var(--txt3);
+  letter-spacing: 1px;
+}
+.ned-close {
+  background: none;
+  border: none;
+  color: var(--txt3);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 4px;
+  transition: color .15s;
+}
+.ned-close:hover { color: var(--err); }
+
+.ned-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ned-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ned-row label {
+  font-size: 9px;
+  color: var(--txt2);
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+.ned-row input,
+.ned-row select {
+  flex: 1;
+  background: #080d0a;
+  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--txt);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  padding: 5px 8px;
+  outline: none;
+  border-radius: 2px;
+  transition: border-color .15s;
+}
+.ned-row input:focus,
+.ned-row select:focus { border-color: var(--acc); }
+.ned-row select option { background: #0e1612; }
+
+.ned-hint-txt {
+  font-size: 9px;
+  color: var(--txt3);
+  letter-spacing: .5px;
+  padding-left: 90px;
+  margin-top: -4px;
+}
+.ned-hint {
+  font-size: 10px;
+  color: var(--txt3);
+  margin: 0;
+}
+
+.ned-footer {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  justify-content: flex-end;
+}
+.ned-btn {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  padding: 5px 14px;
+  border: 1px solid;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background .15s, color .15s;
+}
+.ned-btn.cancel {
+  background: transparent;
+  border-color: rgba(255,255,255,0.15);
+  color: var(--txt2);
+}
+.ned-btn.cancel:hover { background: rgba(255,255,255,0.05); }
+.ned-btn.save {
+  background: rgba(74,222,128,0.12);
+  border-color: var(--acc);
+  color: var(--acc);
+  font-weight: 700;
+}
+.ned-btn.save:hover { background: rgba(74,222,128,0.22); }

@@ -1,13 +1,18 @@
+// TopNavBar.jsx
 import React, { useState, useEffect } from 'react'
 import './TopNavBar.css'
 
 export default function TopNavBar({
   filename, setFilename,
-  onCompile, isCompiling,
+  onCompile, onCompileFlow,
+  isCompiling,
   buildStatus, ramUsage,
-  serverOnline
+  serverOnline,
+  fontSize, onFontSize,
+  onLoadFile, onSaveProject, onExportMermaid, onExportCpp
 }) {
   const [time, setTime] = useState('')
+  const [showFileMenu, setShowFileMenu] = useState(false)
 
   useEffect(() => {
     const tick = () => {
@@ -20,16 +25,23 @@ export default function TopNavBar({
     return () => clearInterval(id)
   }, [])
 
-  const btnLabel = isCompiling         ? '⏳ COMPILING...'
-    : buildStatus === 'RUN_OK'         ? '✓ COMPILED'
-    : buildStatus === 'ERROR'          ? '✘ ERROR'
-    : '▶ COMPILE_RUN'
+  const btnLabel = isCompiling           ? '⏳ COMPILING...'
+    : buildStatus === 'RUN_OK'           ? '✓ COMPILED'
+    : buildStatus === 'ERROR'            ? '✘ ERROR'
+    : '▶ COMPILE'
 
   const btnClass = [
     'compile-btn',
-    isCompiling          ? 'compiling' : '',
-    buildStatus === 'RUN_OK' ? 'success' : '',
-    buildStatus === 'ERROR'  ? 'errored' : '',
+    isCompiling              ? 'compiling' : '',
+    buildStatus === 'RUN_OK' ? 'success'   : '',
+    buildStatus === 'ERROR'  ? 'errored'   : '',
+  ].filter(Boolean).join(' ')
+
+  const flowBtnClass = [
+    'compile-btn flow-compile-btn',
+    isCompiling              ? 'compiling' : '',
+    buildStatus === 'RUN_OK' ? 'success'   : '',
+    buildStatus === 'ERROR'  ? 'errored'   : '',
   ].filter(Boolean).join(' ')
 
   const serverDot = serverOnline === null ? 'dot-checking'
@@ -43,10 +55,32 @@ export default function TopNavBar({
           <span className="app-name">CYBER_DRIVE</span>
         </div>
         <div className="nav-menus">
-          {['FILE', 'EDIT', 'VIEW'].map(m => (
-            <button key={m} className="menu-btn">{m}</button>
-          ))}
-          <button className="menu-btn debug-tab">DEBUG</button>
+          <div className="dropdown-container">
+            <button className="menu-btn" onClick={() => setShowFileMenu(!showFileMenu)}>
+              FILE ▾
+            </button>
+            {showFileMenu && (
+              <div className="dropdown-menu" onMouseLeave={() => setShowFileMenu(false)}>
+                <label className="dropdown-item">
+                  Cargar Archivo (.cyber)
+                  <input type="file" accept=".cyber" hidden onChange={(e) => {
+                    setShowFileMenu(false);
+                    if (onLoadFile) onLoadFile(e);
+                  }} />
+                </label>
+                <div className="dropdown-item" onClick={() => { setShowFileMenu(false); if (onSaveProject) onSaveProject() }}>
+                  Guardar Proyecto (.cyber)
+                </div>
+                <div className="dropdown-divider"></div>
+                <div className="dropdown-item" onClick={() => { setShowFileMenu(false); if (onExportCpp) onExportCpp() }}>
+                  Exportar C++
+                </div>
+                <div className="dropdown-item" onClick={() => { setShowFileMenu(false); if (onExportMermaid) onExportMermaid() }}>
+                  Exportar Mermaid
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -57,12 +91,35 @@ export default function TopNavBar({
           onChange={e => setFilename(e.target.value)}
           spellCheck={false}
         />
-        <button className={btnClass} onClick={onCompile} disabled={isCompiling}>
+        {/* Botón compilar texto */}
+        <button
+          className={btnClass}
+          onClick={onCompile}
+          disabled={isCompiling}
+          title="Compilar código del editor de texto"
+        >
           {btnLabel}
+        </button>
+        {/* Botón compilar diagrama */}
+        <button
+          className={flowBtnClass}
+          onClick={onCompileFlow}
+          disabled={isCompiling}
+          title="Compilar diagrama de flujo visual → JSON"
+        >
+          {isCompiling ? '⏳' : '⬡'} FLOW
         </button>
       </div>
 
       <div className="topnav-right">
+        {/* Font size controls */}
+        {onFontSize && (
+          <div className="font-ctrl">
+            <button className="font-btn" onClick={() => onFontSize(-1)} title="Reducir fuente">A-</button>
+            <span className="font-size-lbl">{fontSize}px</span>
+            <button className="font-btn" onClick={() => onFontSize(+1)} title="Aumentar fuente">A+</button>
+          </div>
+        )}
         <div className={`server-status ${serverDot}`} title={
           serverOnline === null ? 'Conectando...'
           : serverOnline ? 'Backend online' : 'Backend offline'

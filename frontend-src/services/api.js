@@ -1,13 +1,13 @@
 // src/services/api.js
-// ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // Todas las llamadas al backend Flask van aquí.
 // El frontend NUNCA habla directo al compilador, solo via JSON.
-// ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 
 const BASE_URL = 'http://localhost:5000/api'
 
 /**
- * Compilación completa:
+ * Compilación completa desde código fuente texto:
  * Léxico → Sintáctico → Semántico → Assembler + Traducciones
  *
  * @param {string} codigo  - Código fuente C-like
@@ -19,8 +19,34 @@ export async function compilarCodigo(codigo) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ codigo }),
   })
-  const data = await res.json()
-  return data
+  return res.json()
+}
+
+/**
+ * Compilación desde el diagrama de flujo visual (React Flow canvas).
+ * El payload es el JSON serializado del lienzo.
+ *
+ * El backend espera:
+ * {
+ *   "version": "1.0",
+ *   "nodes": [ { id, type, label, varName, varType, varValue, expr, position } ],
+ *   "edges": [ { id, source, target, label } ]
+ * }
+ *
+ * El backend devuelve el mismo esquema que /api/compilar:
+ * { ok, errores, tokens, ast, assembler, tabla_simbolos,
+ *   traducciones, cpp, mermaid, echo }
+ *
+ * @param {object} flowJson  - Objeto { version, nodes, edges }
+ * @returns {Promise<CompileResult>}
+ */
+export async function compilarDiagrama(flowJson) {
+  const res = await fetch(`${BASE_URL}/compilar_diagrama`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(flowJson),
+  })
+  return res.json()
 }
 
 /**

@@ -33,6 +33,7 @@ export default function App() {
   const [ast,           setAst]           = useState(null)
   const [tablaSimbolos, setTablaSimbolos] = useState({})
   const [traducciones,  setTraducciones]  = useState({ python: '', javascript: '', ruby: '', rust: '' })
+  const [mermaidCode,   setMermaidCode]   = useState('')
   const [isCompiling,   setIsCompiling]   = useState(false)
   const [buildStatus,   setBuildStatus]   = useState('VISUAL')
   const [ramUsage,      setRamUsage]      = useState('64K')
@@ -120,6 +121,9 @@ export default function App() {
       if (r.traducciones) {
         setTraducciones(r.traducciones)
       }
+      if (r.mermaid) {
+        setMermaidCode(r.mermaid)
+      }
       if (r.cpp) setCppCode(r.cpp)
 
       if (r.ok) {
@@ -144,6 +148,28 @@ export default function App() {
     }
   }, [isCompiling, sourceCode, filename, buildStatus])
 
+  const handleCargarArchivo = useCallback((e) => {
+  const file = e.target.files[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = (ev) => {
+    setSourceCode(ev.target.result)
+    setFilename(file.name)
+  }
+  reader.readAsText(file)
+  e.target.value = ''
+}, [])
+
+const handleDescargarArchivo = useCallback(() => {
+  const blob = new Blob([sourceCode], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}, [sourceCode, filename])
+
   return (
     <div className="app-layout">
       <TopNavBar
@@ -163,6 +189,7 @@ export default function App() {
         <MainCanvas
           sourceCode={sourceCode}
           onCodeChange={setSourceCode}
+          mermaidCode={mermaidCode}
         />
         <div className="resize-handle right" onMouseDown={startResize('right')} />
         <RightSplitPanel

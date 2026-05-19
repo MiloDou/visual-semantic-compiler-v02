@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useState, useEffect, useRef } from 'react'
 import ReactFlow, {
   Background, Controls, MiniMap,
   addEdge, useNodesState, useEdgesState,
@@ -6,9 +6,28 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import Editor from '@monaco-editor/react'
+import mermaid from 'mermaid'
 import './MainCanvas.css'
 import { INITIAL_NODES, INITIAL_EDGES } from '../data/flowData.js'
 import FlowNode from './FlowNode.jsx'
+
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'base',
+  themeVariables: {
+    primaryColor: '#0c1210',
+    primaryTextColor: '#86efac',
+    primaryBorderColor: '#a855f7', //#4ade80
+    lineColor: '#4ade80', //
+    secondaryColor: '#101a15',
+    tertiaryColor: '#080d0a',
+    edgeLabelBackground: '#080d0a',
+    nodeTextColor: '#86efac',
+    clusterBkg: '#080d0a',
+    titleColor: '#86efac',
+    fontFamily: "'Share Tech Mono', 'Courier New', monospace",
+  }
+})
 
 const nodeTypes = { flowNode: FlowNode }
 
@@ -31,32 +50,40 @@ function beforeMount(monaco) {
     base: 'vs-dark',
     inherit: true,
     rules: [
-      { token: 'keyword',  foreground: 'c084fc', fontStyle: 'bold' },
-      { token: 'type',     foreground: '4ade80' },
-      { token: 'string',   foreground: 'f0abfc' },
-      { token: 'number',   foreground: 'a5f3fc' },
-      { token: 'comment',  foreground: '166534', fontStyle: 'italic' },
-      { token: 'delimiter',foreground: '86efac' },
+      { token: 'keyword',   foreground: 'c084fc', fontStyle: 'bold' },
+      { token: 'type',      foreground: '4ade80' },
+      { token: 'string',    foreground: 'f0abfc' },
+      { token: 'number',    foreground: 'a5f3fc' },
+      { token: 'comment',   foreground: '166534', fontStyle: 'italic' },
+      { token: 'delimiter', foreground: '86efac' },
     ],
     colors: {
-      'editor.background':           '#080d0a',
-      'editor.foreground':           '#86efac',
-      'editorLineNumber.foreground': '#166534',
-      'editorCursor.foreground':     '#7c3aed',
-      'editor.selectionBackground':  '#4c1d9588',
-      'editorIndentGuide.background':'#3a6a4838',
+      'editor.background':            '#080d0a',
+      'editor.foreground':            '#86efac',
+      'editorLineNumber.foreground':  '#166534',
+      'editorCursor.foreground':      '#7c3aed',
+      'editor.selectionBackground':   '#4c1d9588',
+      'editorIndentGuide.background': '#3a6a4838',
       'editor.lineHighlightBackground': '#3a6a4830',
     },
   })
 }
 
-// ── Tabs del canvas ──────────────────────────────────────
 const TABS = ['FLOWCHART', 'EDITOR']
 
-export default function MainCanvas({ sourceCode, onCodeChange }) {
+export default function MainCanvas({ sourceCode, onCodeChange, mermaidCode }) {
   const [activeTab, setActiveTab] = useState('EDITOR')
   const [nodes, setNodes, onNodesChange] = useNodesState(INITIAL_NODES)
   const [edges, setEdges, onEdgesChange] = useEdgesState(INITIAL_EDGES)
+  const mermaidRef = useRef(null)
+
+  useEffect(() => {
+    if (activeTab !== 'FLOWCHART' || !mermaidCode || !mermaidRef.current) return
+    const el = mermaidRef.current
+    el.removeAttribute('data-processed')
+    el.innerHTML = mermaidCode
+    mermaid.run({ nodes: [el] })
+  }, [activeTab, mermaidCode])
 
   const onConnect = useCallback(params =>
     setEdges(eds => addEdge({
@@ -86,7 +113,6 @@ export default function MainCanvas({ sourceCode, onCodeChange }) {
 
   return (
     <div className="canvas-wrapper">
-      {/* Tab bar */}
       <div className="canvas-tabs">
         {TABS.map(t => (
           <button
@@ -100,29 +126,33 @@ export default function MainCanvas({ sourceCode, onCodeChange }) {
         <span className="canvas-label-right">NONAME.CPP</span>
       </div>
 
-      {/* FLOWCHART TAB */}
       {activeTab === 'FLOWCHART' && (
         <div className="canvas-flow">
-          <ReactFlow
-            nodes={nodes} edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
-            nodeTypes={nodeTypes}
-            fitView
-            deleteKeyCode="Delete"
-            style={{ background: 'transparent' }}
-          >
-            <Background color="#ffffff08" gap={22} size={1} />
-            <Controls style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)', borderRadius: 0 }} />
-            <MiniMap style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)' }} nodeColor="#a855f744" maskColor="#080d0acc" />
-          </ReactFlow>
+          {mermaidCode ? (
+            <div style={{ width: '100%', height: '100%', overflow: 'auto', padding: '1rem', background: '#080d0a' }}>
+              <div className="mermaid" ref={mermaidRef} />
+            </div>
+          ) : (
+            <ReactFlow
+              nodes={nodes} edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onDragOver={onDragOver}
+              onDrop={onDrop}
+              nodeTypes={nodeTypes}
+              fitView
+              deleteKeyCode="Delete"
+              style={{ background: 'transparent' }}
+            >
+              <Background color="#ffffff08" gap={22} size={1} />
+              <Controls style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)', borderRadius: 0 }} />
+              <MiniMap style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)' }} nodeColor="#a855f744" maskColor="#080d0acc" />
+            </ReactFlow>
+          )}
         </div>
       )}
 
-      {/* EDITOR TAB */}
       {activeTab === 'EDITOR' && (
         <div className="canvas-editor">
           <Editor

@@ -1033,7 +1033,9 @@ def compilar_codigo(codigo_fuente):
         'tabla_simbolos': {},
         'traducciones': {'python': '', 'javascript': '', 'ruby': '', 'rust': ''},
         'cpp': codigo_fuente,
+        'mermaid': '',
     }
+
 
     # 1. LÉXICO
     try:
@@ -1086,5 +1088,136 @@ def compilar_codigo(codigo_fuente):
         except Exception as e:
             resultado['traducciones'][lang] = f'# Error: {e}'
 
+    # 6. MERMAID
+    try:
+        resultado['mermaid'] = ast_a_mermaid(arbol)
+    except Exception as e:
+        resultado['mermaid'] = f'flowchart TD\n    ERR["Error: {e}"]'
+
     resultado['ok'] = len(resultado['errores']) == 0
     return resultado
+
+def ast_a_mermaid(nodo):
+    """Convierte el AST a texto Mermaid para diagrama de flujo."""
+    lines = ["flowchart TD"]
+    counter = [0]
+
+    def new_id():
+        counter[0] += 1
+        return f"N{counter[0]}"
+
+    def procesar(nodo, padre_id=None):
+        if nodo is None:
+            return
+
+        if isinstance(nodo, NodoPrograma):
+            for f in nodo.funciones:
+                procesar(f, padre_id)
+            if nodo.main:
+                procesar(nodo.main, padre_id)
+
+        elif isinstance(nodo, NodoFuncion):
+            nid = new_id()
+            label = f"func: {nodo.nombre[1]}()"
+            lines.append(f'    {nid}(["{label}"])')
+            if padre_id:
+                lines.append(f'    {padre_id} --> {nid}')
+            prev = nid
+            for inst in nodo.cuerpo:
+                prev = procesar_inst(inst, prev)
+
+        return None
+
+    def procesar_inst(nodo, prev_id):
+        if nodo is None:
+            return prev_id
+
+        if isinstance(nodo, NodoAsignacion):
+            nid = new_id()
+            expr = expr_label(nodo.expresion)
+            label = f"{nodo.nombre[1]} = {expr}"
+            lines.append(f'    {nid}["{label}"]')
+            lines.append(f'    {prev_id} --> {nid}')
+            return nid
+
+        elif isinstance(nodo, NodoRetorno):
+            nid = new_id()
+            label = f"return {expr_label(nodo.expresion)}"
+            lines.append(f'    {nid}["{label}"]')
+            lines.append(f'    {prev_id} --> {nid}')
+            return nid
+
+        elif isinstance(nodo, (NodoPrint, NodoPrintln)):
+            nid = new_id()
+            label = f"print {expr_label(nodo.expresion)}"
+            lines.append(f'    {nid}[/"{label}"/]')
+            lines.append(f'    {prev_id} --> {nid}')
+            return nid
+
+        elif isinstance(nodo, NodoIf):
+            nid = new_id()
+            label = expr_label(nodo.condicion)
+            lines.append(f'    {nid}{{"{label}"}}')
+            lines.append(f'    {prev_id} --> {nid}')
+            # rama SI
+            prev_si = nid
+            for inst in nodo.cuerpo_if:
+                prev_si = procesar_inst(inst, prev_si)
+            # rama NO
+            if nodo.cuerpo_else:
+                prev_no = nid
+                for inst in nodo.cuerpo_else:
+                    prev_no = procesar_inst(inst, prev_no)
+                lines.append(f'    {nid} -->|SI| N{counter[0]-len(nodo.cuerpo_if)}')
+                lines.append(f'    {nid} -->|NO| N{counter[0]-len(nodo.cuerpo_else)+1}')
+            return prev_si
+
+        elif isinstance(nodo, NodoWhile):
+            nid = new_id()
+            label = expr_label(nodo.condicion)
+            lines.append(f'    {nid}{{"{label}"}}')
+            lines.append(f'    {prev_id} --> {nid}')
+            prev_w = nid
+            for inst in nodo.cuerpo:
+                prev_w = procesar_inst(inst, prev_w)
+            lines.append(f'    {prev_w} --> {nid}')
+            return nid
+
+        elif isinstance(nodo, NodoFor):
+            init_id = procesar_inst(nodo.inicializacion, prev_id)
+            cond_id = new_id()
+            label = expr_label(nodo.condicion)
+            lines.append(f'    {cond_id}{{"{label}"}}')
+            lines.append(f'    {init_id} --> {cond_id}')
+            prev_f = cond_id
+            for inst in nodo.cuerpo:
+                prev_f = procesar_inst(inst, prev_f)
+            inc_id = procesar_inst(nodo.incremento, prev_f)
+            lines.append(f'    {inc_id} --> {cond_id}')
+            return cond_id
+
+        elif isinstance(nodo, NodoLlamadaFuncion):
+            nid = new_id()
+            args = ", ".join(expr_label(a) for a in nodo.argumentos)
+            label = f"{nodo.nombre_funcion}({args})"
+            lines.append(f'    {nid}["{label}"]')
+            lines.append(f'    {prev_id} --> {nid}')
+            return nid
+
+        return prev_id
+
+    def expr_label(nodo):
+        if nodo is None: return "?"
+        if isinstance(nodo, NodoNumero): return nodo.valor[1]
+        if isinstance(nodo, NodoFloat):  return nodo.valor[1]
+        if isinstance(nodo, NodoIdent):  return nodo.nombre[1]
+        if isinstance(nodo, NodoString): return nodo.valor[1]
+        if isinstance(nodo, NodoOperacion):
+            return f"{expr_label(nodo.izquierda)} {nodo.operador[1]} {expr_label(nodo.derecha)}"
+        if isinstance(nodo, NodoLlamadaFuncion):
+            args = ", ".join(expr_label(a) for a in nodo.argumentos)
+            return f"{nodo.nombre_funcion}({args})"
+        return "expr"
+
+    procesar(nodo)
+    return "\n".join(lines)

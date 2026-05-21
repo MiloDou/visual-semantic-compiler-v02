@@ -112,13 +112,16 @@ class NodoPrograma(NodoAST):
 
         codigo = [
             "extern printf",
+            "extern scanf",
             "section .text",
             "global _start"
         ]
         data = [
             "section .data",
             '    fmt_int    db "%d", 0',
-            '    fmt_int_ln db "%d", 10, 0'
+            '    fmt_int_ln db "%d", 10, 0',
+            '    fmt_scanf  db "%d", 0',
+            '    msg_pide   db "Ingrese un numero entero positivo: ", 0'
         ]
         bss = ["section .bss"]
 
@@ -302,6 +305,14 @@ class NodoPrint(NodoAST):
     def traducirRust(self): return f"print!(\"{{}}\", {self.expresion.traducirRust()});"
 
     def generarAssembler(self):
+        if isinstance(self.expresion, NodoString):
+            lbl = self.expresion.generarAssembler()  # devuelve la etiqueta
+            res  = f"\n    ; ── printf(\"%s\", str)"
+            res += f"\n    push  {lbl}"
+            res += "\n    push  fmt_str"
+            res += "\n    call  printf"
+            res += "\n    add   esp, 8"
+            return res
         res  = self.expresion.generarAssembler()
         res += "\n    push  eax"
         res += "\n    push  fmt_int"
@@ -320,6 +331,14 @@ class NodoPrintln(NodoAST):
     def traducirRust(self): return f"println!(\"{{}}\", {self.expresion.traducirRust()});"
 
     def generarAssembler(self):
+        if isinstance(self.expresion, NodoString):
+            lbl = self.expresion.generarAssembler()  # devuelve la etiqueta
+            res  = f"\n    ; ── printf(\"%s\\n\", str)"
+            res += f"\n    push  {lbl}"
+            res += "\n    push  fmt_str_ln"
+            res += "\n    call  printf"
+            res += "\n    add   esp, 8"
+            return res
         res  = self.expresion.generarAssembler()
         res += "\n    push  eax"
         res += "\n    push  fmt_int_ln"
@@ -535,6 +554,8 @@ class NodoFloat(NodoAST):
 
 
 class NodoString(NodoAST):
+    _str_counter = 0  # contador global de etiquetas de string
+
     def __init__(self, valor):
         self.valor = valor
 
@@ -542,7 +563,15 @@ class NodoString(NodoAST):
     def traducirJS(self):   return self.valor[1]
     def traducirRuby(self): return self.valor[1]
     def traducirRust(self): return self.valor[1]
-    def generarAssembler(self): return "; string literal — pendiente"
+
+    def generarAssembler(self):
+        """Agrega el string a la sección .data y devuelve la etiqueta."""
+        NodoString._str_counter += 1
+        lbl   = f"str_{NodoString._str_counter}"
+        # El valor incluye las comillas, las quitamos para el byte db
+        texto = self.valor[1].strip('"').replace('\\n', '\n')
+        _asm_data.append(f'    {lbl}  db "{texto}", 10, 0')
+        return lbl
 
 
 class NodoLlamadaFuncion(NodoAST):
@@ -657,7 +686,15 @@ class NodoEntrada(NodoAST):
     def traducirJS(self):   return f"// scanf({self.variable[1]})"
     def traducirRuby(self): return f"{self.variable[1]} = gets.chomp.to_i"
     def traducirRust(self): return f"// stdin → {self.variable[1]}"
-    def generarAssembler(self): return "; scanf — pendiente"
+
+    def generarAssembler(self):
+        var = self.variable[1]
+        codigo  = "\n    ; ── scanf(\"%d\", &" + var + ") ────────────────────────────────"
+        codigo += "\n    push  " + var        # dirección de la variable (referencia)
+        codigo += "\n    push  fmt_scanf"
+        codigo += "\n    call  scanf"
+        codigo += "\n    add   esp, 8"
+        return codigo
 
 
 # ─────────────────────────────────────────────
@@ -1001,11 +1038,13 @@ class AnalizadorSemantico:
         tipo_expr = self.analizar(nodo.expresion)
         nombre    = nodo.nombre[1]
         if nodo.tipo is not None:
+            if tipo_expr and nodo.tipo[1] != tipo_expr:
+                raise Exception(f"Error semántico: no se puede asignar un valor de tipo '{tipo_expr}' a la variable '{nombre}' declarada como '{nodo.tipo[1]}'")
             self.declarar(nombre, nodo.tipo[1])
         else:
             sim = self.buscar(nombre)
             if tipo_expr and sim['tipo'] != tipo_expr:
-                raise Exception(f"Error semántico: tipos incompatibles en asignación de '{nombre}'")
+                raise Exception(f"Error semántico: tipos incompatibles en asignación. '{nombre}' es '{sim['tipo']}' pero se le asigna '{tipo_expr}'")
 
     def visitar_NodoOperacion(self, nodo):
         ti = self.analizar(nodo.izquierda)
@@ -1238,10 +1277,19 @@ def simular_echo(arbol):
             return resultado
         return '?'
 
+    STDIN_DEMO = {}   # var_name → valor demo simulado
+
     def ejecutar_cuerpo(cuerpo, mem, redeclaradas=None):
         if redeclaradas is None:
             redeclaradas = set()
         for inst in cuerpo:
+            if isinstance(inst, NodoEntrada):
+                var = inst.variable[1]
+                # En simulación usamos valor 5 por defecto para que factorial calcule 5! = 120
+                demo_val = STDIN_DEMO.get(var, 5)
+                mem[var] = demo_val
+                output.append(f"[entrada: {var} = {demo_val}]")
+                continue
             if isinstance(inst, NodoAsignacion):
                 # Si tiene tipo, es una redeclaración en este scope
                 if inst.tipo is not None:
@@ -1251,8 +1299,13 @@ def simular_echo(arbol):
             elif isinstance(inst, NodoRetorno):
                 return evaluar_con_mem(inst.expresion, mem)
             elif isinstance(inst, (NodoPrint, NodoPrintln)):
-                val = evaluar_con_mem(inst.expresion, mem)
-                output.append(str(val))
+                # Si la expresión es un string literal, mostrar el texto directamente
+                if isinstance(inst.expresion, NodoString):
+                    texto = inst.expresion.valor[1].strip('"')
+                    output.append(texto)
+                else:
+                    val = evaluar_con_mem(inst.expresion, mem)
+                    output.append(str(val))
             elif isinstance(inst, NodoIf):
                 cond = evaluar_con_mem(inst.condicion, mem)
                 if cond and cond != '?':

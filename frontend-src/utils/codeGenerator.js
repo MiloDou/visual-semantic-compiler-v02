@@ -2,8 +2,7 @@
 // utils/codeGenerator.js — Generador de código en tiempo real (cliente)
 //
 // Recorre el grafo del canvas React Flow partiendo del nodo INICIO y
-// produce código sin llamadas a red. Se ejecuta en cada cambio del diagrama
-// para lograr la interactividad tipo "Scratch".
+// produce código sin llamadas a red. Se ejecuta en cada cambio del diagrama.
 //
 // API pública:
 //   generateCode(nodes, edges) → { c_code, assembler, mermaid }
@@ -14,8 +13,8 @@
 //   asignacion→ declaración tipada   : int n = 0;
 //   proceso   → expresión libre      : n = n + 1;
 //   condicion → if/else o while      : detectado por estructura SI/NO
-//   io        → entrada/salida       : printf("%d\n", x);
-//   print     → impresión            : printf("%d\n", x);
+//   io        → entrada/salida       : println x;
+//   print     → impresión            : println x;
 //   ciclo     → while explícito (⬡)  : while (expr) { ... }
 //=============================================================================
 
@@ -26,34 +25,22 @@ const toCType = (varType = '') =>
   ['flotante', 'float', 'double'].includes((varType || '').toLowerCase())
     ? 'float' : 'int'
 
-/** @param {string} cType - 'float'|'int' → formato printf */
-const fmtStr = (cType) => (cType === 'float' ? '%f' : '%d')
-
 /**
  * Determina si existe un camino dirigido de `from` → `to` en el grafo.
  * Usado para detectar bucles (while) en condiciones.
- *
- * @param {string}  from
- * @param {string}  to
- * @param {object}  adjOut  - Mapa de adyacencia source → [{target, label}]
- * @param {number}  [depth=30]
- * @param {Set}     [seen]
- * @returns {boolean}
  */
-function pathExists(from, to, adjOut, depth = 30, seen = new Set()) {
+function pathExists(from, to, adjOut, depth = 40, seen = new Set()) {
   if (depth <= 0 || seen.has(from)) return false
   seen.add(from)
   for (const e of (adjOut[from] || [])) {
     if (e.target === to) return true
-    if (pathExists(e.target, to, adjOut, depth - 1, seen)) return true
+    if (pathExists(e.target, to, adjOut, depth - 1, new Set(seen))) return true
   }
   return false
 }
 
 /**
  * Construye el mapa de adyacencia a partir de las aristas del canvas.
- * @param {object[]} edges
- * @returns {object}  adjOut[sourceId] = [{target, label}]
  */
 function buildAdj(edges) {
   const adj = {}
@@ -71,14 +58,14 @@ function buildAdj(edges) {
 const isNoLabel = (label = '') =>
   ['NO', 'FALSE', 'N'].includes(label.trim().toUpperCase())
 
+/** Detecta si una etiqueta de arista corresponde a la rama "SI/verdadera". */
+const isSiLabel = (label = '') =>
+  ['SI', 'YES', 'TRUE', 'S', 'SÍ'].includes(label.trim().toUpperCase())
+
 // ─── Generador de código C ────────────────────────────────────────────────────
 
 /**
  * Genera código C válido recorriendo el grafo en orden topológico.
- *
- * @param {object[]} nodes - Nodos del canvas
- * @param {object[]} edges - Aristas del canvas
- * @returns {string} Código fuente C
  */
 function generateCCode(nodes, edges) {
   if (!nodes.length) {
@@ -91,7 +78,6 @@ function generateCCode(nodes, edges) {
   const nodeMap  = Object.fromEntries(nodes.map(n => [n.id, n]))
   const adjOut   = buildAdj(edges)
   const visited  = new Set()
-  const varTypes = {}   // varName → 'int'|'float'
   const lines    = []
 
   // ── Localizar nodo INICIO ─────────────────────────────────────────────────
@@ -105,36 +91,68 @@ function generateCCode(nodes, edges) {
 
   lines.push('int main() {')
 
-  // ── Recorrido de cuerpo simple (sin bifurcación) ──────────────────────────
+  // ── Nodo de convergencia de if/else ──────────────────────────────────────
+  /**
+   * Encuentra el nodo de convergencia (join) después de un if/else.
+   * Es el primer nodo alcanzable desde ambas ramas.
+   */
+  function findJoinNode(siTarget, noTarget, maxDepth = 30) {
+    if (!siTarget || !noTarget) return null
+    // BFS desde ambas ramas para encontrar el primer nodo común
+    const reachSi = new Set()
+    const reachNo = new Set()
+    const qSi = [siTarget]
+    const qNo = [noTarget]
+    for (let d = 0; d < maxDepth; d++) {
+      if (qSi.length === 0 && qNo.length === 0) break
+      if (qSi.length) {
+        const cur = qSi.shift()
+        if (!cur || reachSi.has(cur)) { /* skip */ } else {
+          reachSi.add(cur)
+          if (reachNo.has(cur)) return cur
+          for (const e of (adjOut[cur] || [])) qSi.push(e.target)
+        }
+      }
+      if (qNo.length) {
+        const cur = qNo.shift()
+        if (!cur || reachNo.has(cur)) { /* skip */ } else {
+          reachNo.add(cur)
+          if (reachSi.has(cur)) return cur
+          for (const e of (adjOut[cur] || [])) qNo.push(e.target)
+        }
+      }
+    }
+    return null
+  }
+
   /**
    * Recorre desde startId hasta stopId (exclusivo), emitiendo código.
-   * Usado para el cuerpo de bucles while.
-   * @param {string}  startId
-   * @param {string}  stopId   - Nodo en el que parar (sin emitir)
-   * @param {number}  indent
+   * Usado para el cuerpo de bloques (while, if, else).
    */
-  function emitBody(startId, stopId, indent) {
+  function emitBlock(startId, stopId, indent, maxDepth = 60) {
     let cur = startId
     const localSeen = new Set()
-    while (cur && cur !== stopId && !localSeen.has(cur)) {
-      if (visited.has(cur)) break
+    let depth = maxDepth
+    while (cur && cur !== stopId && !localSeen.has(cur) && depth-- > 0) {
+      if (visited.has(cur) && cur !== stopId) break
       localSeen.add(cur)
-      visited.add(cur)
-      cur = emitSingle(cur, indent, stopId, localSeen) || null
+      const next = emitNode(cur, indent, stopId)
+      if (next === null || next === undefined) break
+      cur = next
     }
   }
 
   /**
    * Emite el código de un único nodo y devuelve el id del siguiente.
-   * @param {string}  nodeId
-   * @param {number}  indent
-   * @param {string}  [stopAt]    - Nodo en el que detener el avance
-   * @param {Set}     [bodyLocal] - Visitados locales del cuerpo
    * @returns {string|null} id del siguiente nodo, o null para detenerse
    */
-  function emitSingle(nodeId, indent, stopAt = null, bodyLocal = null) {
-    const node  = nodeMap[nodeId]
+  function emitNode(nodeId, indent, stopAt = null) {
+    if (!nodeId || nodeId === stopAt) return null
+    const node = nodeMap[nodeId]
     if (!node) return null
+    if (visited.has(nodeId)) return null
+
+    visited.add(nodeId)
 
     const shape = (node.data?.shape || 'proceso').toLowerCase()
     const pad   = '    '.repeat(indent)
@@ -147,88 +165,136 @@ function generateCCode(nodes, edges) {
     }
 
     // ── INICIO (sin código) ───────────────────────────────────────────────────
-    if (shape === 'inicio') { /* solo avanza */ }
+    if (shape === 'inicio') {
+      const mainEdge = outs[0]
+      return mainEdge?.target || null
+    }
 
     // ── ASIGNACIÓN ────────────────────────────────────────────────────────────
-    else if (shape === 'asignacion') {
-      const t  = toCType(node.data?.varType)
-      const nm = (node.data?.varName  || 'x').trim()
-      const vl = (node.data?.varValue || '0').trim()
-      varTypes[nm] = t
-      lines.push(`${pad}${t} ${nm} = ${vl};`)
+    if (shape === 'asignacion') {
+      const exprLabel = (node.data?.label || '').trim()
+      // Si la label es una expresión directa válida (int x = 0)
+      const hasDirectExpr = exprLabel &&
+        exprLabel.toLowerCase() !== 'declarar' &&
+        exprLabel.toLowerCase() !== 'asignacion' &&
+        exprLabel !== ''
+
+      if (hasDirectExpr) {
+        lines.push(`${pad}${exprLabel.replace(/;+$/, '')};`)
+      } else {
+        const t  = toCType(node.data?.varType)
+        const nm = (node.data?.varName  || 'x').trim()
+        const vl = (node.data?.varValue || '0').trim()
+        lines.push(`${pad}${t} ${nm} = ${vl};`)
+      }
     }
 
     // ── PROCESO ───────────────────────────────────────────────────────────────
     else if (shape === 'proceso') {
       const expr = (node.data?.expr || node.data?.label || '').replace(/;+$/, '').trim()
-      if (expr) lines.push(`${pad}${expr};`)
+      if (expr && expr.toLowerCase() !== 'proceso') {
+        lines.push(`${pad}${expr};`)
+      }
     }
 
-    // ── PRINT / IO ────────────────────────────────────────────────────────────
+    // ── PRINT / IO ────────────────────────────────────────────────────────
     else if (shape === 'print' || shape === 'io') {
-      const expr = (node.data?.expr || node.data?.label || '').trim()
-      lines.push(`${pad}println ${expr || '0'};`)
+      const raw   = (node.data?.expr || node.data?.label || '').trim()
+      const clean = raw.replace(/;+$/, '').trim()
+
+      // Detección de entrada: "leer n", "leer: n", "scanf n", "input n", "read n"
+      const inputPrefixes = ['leer ', 'leer:', 'scanf ', 'input ', 'read ']
+      let isInput = false
+      let inputVar = ''
+      for (const pref of inputPrefixes) {
+        if (clean.toLowerCase().startsWith(pref.toLowerCase())) {
+          isInput  = true
+          inputVar = clean.slice(pref.length).trim().replace(/;+$/, '').trim()
+          break
+        }
+      }
+
+      if (isInput && inputVar) {
+        lines.push(`${pad}scanf("%d", &${inputVar});`)
+      } else if (clean && clean.toLowerCase() !== 'imprimir' && clean.toLowerCase() !== 'i/o') {
+        lines.push(`${pad}println ${clean};`)
+      }
     }
 
     // ── CONDICIÓN ─────────────────────────────────────────────────────────────
     else if (shape === 'condicion') {
-      const expr     = (node.data?.expr || node.data?.label || 'false').trim()
+      let expr = (node.data?.expr || node.data?.label || 'false').trim()
+      if (expr.toLowerCase() === 'condición' || expr.toLowerCase() === 'condicion') {
+        expr = 'false'
+      }
+
+      const siEdge   = outs.find(o => isSiLabel(o.label)) || outs.find(o => !isNoLabel(o.label))
       const noEdge   = outs.find(o => isNoLabel(o.label))
-      const siEdge   = outs.find(o => !isNoLabel(o.label))
-      const noTarget = noEdge?.target
       const siTarget = siEdge?.target
+      const noTarget = noEdge?.target
 
-      // Detectar WHILE: si la rama SI o NO regresa al nodo actual
-      const isWhileSi = siTarget && pathExists(siTarget, nodeId, adjOut)
-      const isWhileNo = noTarget && pathExists(noTarget, nodeId, adjOut)
+      // Detectar WHILE: si la rama SI vuelve al nodo actual → while(expr) { cuerpo NO }
+      // O si la rama NO vuelve al nodo actual → while(!expr) pero usamos la rama SI como salida
+      const loopBodyViaSi = siTarget && pathExists(siTarget, nodeId, adjOut)
+      const loopBodyViaNo = noTarget && pathExists(noTarget, nodeId, adjOut)
 
-      if (isWhileSi) {
+      if (loopBodyViaSi || loopBodyViaNo) {
+        // Es un WHILE
+        // Convención: si la rama NO vuelve (cuerpo del bucle = NO), expr es la condición de permanencia
+        // si la rama SI vuelve (cuerpo del bucle = SI), expr es la condición de permanencia
+        const bodyTarget = loopBodyViaSi ? siTarget : noTarget
+        const exitTarget = loopBodyViaSi ? noTarget : siTarget
+
         lines.push(`${pad}while (${expr}) {`)
-        visited.add(nodeId)
-        emitBody(siTarget, nodeId, indent + 1)
+        // Emitir el cuerpo del bucle hasta volver al nodo actual
+        emitBlock(bodyTarget, nodeId, indent + 1)
         lines.push(`${pad}}`)
-        if (noTarget && !visited.has(noTarget)) return noTarget
-        return null
-      } else if (isWhileNo) {
-        // Si el usuario hizo que la rama NO sea el bucle, usamos == 0 u omitimos !() si es complicado
-        // Dado que el parser no soporta !(), lo emitiremos como comentario o forma simple
-        lines.push(`${pad}while (${expr} == 0) {`)
-        visited.add(nodeId)   
-        emitBody(noTarget, nodeId, indent + 1)
-        lines.push(`${pad}}`)
-        if (siTarget && !visited.has(siTarget)) return siTarget
+
+        if (exitTarget && !visited.has(exitTarget)) {
+          return exitTarget
+        }
         return null
       } else {
-        // if (condición) { rama_SI } else { rama_NO }
+        // Es un IF/ELSE
         lines.push(`${pad}if (${expr}) {`)
+
+        // Encontrar nodo de convergencia
+        const joinNode = findJoinNode(siTarget, noTarget)
+
         if (siTarget && !visited.has(siTarget)) {
-          visited.add(siTarget)
-          emitSingle(siTarget, indent + 1)
+          emitBlock(siTarget, joinNode, indent + 1)
         }
         if (noTarget && !visited.has(noTarget)) {
           lines.push(`${pad}} else {`)
-          visited.add(noTarget)
-          emitSingle(noTarget, indent + 1)
+          emitBlock(noTarget, joinNode, indent + 1)
         }
         lines.push(`${pad}}`)
+
+        // Continuar desde el nodo de convergencia
+        if (joinNode && !visited.has(joinNode)) {
+          return joinNode
+        }
         return null
       }
     }
 
-    // ── CICLO (hexágono) ──────────────────────────────────────────────────────
+    // ── CICLO (hexágono explícito) ────────────────────────────────────────────
     else if (shape === 'ciclo') {
       const expr = (node.data?.expr || node.data?.label || 'true').trim()
       lines.push(`${pad}while (${expr}) {`)
-      for (const e of outs) {
-        const bodyLocal2 = new Set([nodeId])
-        emitBody(e.target, nodeId, indent + 1)
-        break
+      const firstOut = outs[0]
+      if (firstOut) {
+        emitBlock(firstOut.target, nodeId, indent + 1)
       }
       lines.push(`${pad}}`)
+      // Salida del ciclo: buscar arista sin "cuerpo" (la que sale hacia afuera)
+      const exitOut = outs.find(o => !pathExists(o.target, nodeId, adjOut))
+      return exitOut?.target || null
     }
 
     // ── Avanzar al siguiente nodo ─────────────────────────────────────────────
-    const mainEdge = outs.find(o => !isNoLabel(o.label)) || outs[0]
+    // Para nodos normales: tomar la arista SI o la primera arista
+    const mainEdge = outs.find(o => isSiLabel(o.label)) || outs.find(o => !isNoLabel(o.label)) || outs[0]
     return mainEdge?.target || null
   }
 
@@ -237,9 +303,10 @@ function generateCCode(nodes, edges) {
   const startOuts = adjOut[inicio.id] || []
   let cur = startOuts[0]?.target || null
 
-  while (cur && !visited.has(cur)) {
-    visited.add(cur)
-    const next = emitSingle(cur, 1)
+  let safetyCount = 0
+  while (cur && safetyCount++ < 200) {
+    if (visited.has(cur)) break
+    const next = emitNode(cur, 1)
     if (next === null || next === undefined) break
     cur = next
   }
@@ -256,11 +323,6 @@ function generateCCode(nodes, edges) {
 
 /**
  * Genera ensamblador x86 NASM educativo a partir de los nodos del diagrama.
- * Refleja la estructura del código C generado con comentarios explicativos.
- *
- * @param {object[]} nodes
- * @param {object[]} edges
- * @returns {string} Código ensamblador NASM
  */
 function generateAsmCode(nodes, edges) {
   if (!nodes.length) return '; Sin nodos en el diagrama'
@@ -287,6 +349,7 @@ function generateAsmCode(nodes, edges) {
     'section .data',
     '    fmt_int   db "%d", 10, 0    ; formato para entero + newline',
     '    fmt_float db "%f", 10, 0    ; formato para flotante + newline',
+    '    fmt_scanf db "%d", 0        ; formato para lectura scanf',
     '',
   ]
 
@@ -299,7 +362,7 @@ function generateAsmCode(nodes, edges) {
   const text = [
     '',
     'section .text',
-    '    extern printf',
+    '    extern printf, scanf',
     '    global _start',
     '',
     '_start:',
@@ -319,7 +382,7 @@ function generateAsmCode(nodes, edges) {
     const shape = (node.data?.shape || 'proceso').toLowerCase()
     const outs  = adjOut[nodeId] || []
     const noEdge   = outs.find(o => isNoLabel(o.label))
-    const siEdge   = outs.find(o => !isNoLabel(o.label))
+    const siEdge   = outs.find(o => isSiLabel(o.label)) || outs.find(o => !isNoLabel(o.label))
 
     // ── FIN ────────────────────────────────────────────────────────────────
     if (shape === 'fin') {
@@ -334,9 +397,19 @@ function generateAsmCode(nodes, edges) {
 
     // ── ASIGNACIÓN ───────────────────────────────────────────────────────────
     else if (shape === 'asignacion') {
-      const nm = (node.data?.varName  || 'x').trim()
-      const vl = (node.data?.varValue || '0').trim()
-      const t  = toCType(node.data?.varType)
+      let nm = (node.data?.varName  || 'x').trim()
+      let vl = (node.data?.varValue || '0').trim()
+      let t  = toCType(node.data?.varType)
+
+      const label = (node.data?.label || '').trim()
+      if (label && label.toLowerCase() !== 'declarar') {
+        const match = label.match(/^(?:int|float)\s+(\w+)\s*=\s*(.+)$/i)
+        if (match) {
+          nm = match[1]
+          vl = match[2].replace(/;+$/, '')
+        }
+      }
+
       text.push(``, `    ; ── ${t} ${nm} = ${vl}`)
       text.push(`    mov     eax, ${vl}`)
       text.push(`    mov     [${nm}], eax`)
@@ -347,12 +420,10 @@ function generateAsmCode(nodes, edges) {
       const expr = (node.data?.expr || node.data?.label || '').replace(/;+$/, '').trim()
       if (expr) {
         text.push(``, `    ; ── ${expr}`)
-        // Detectar patrones comunes: var = var + n, var++, var--
         const incMatch = expr.match(/^(\w+)\s*=\s*\1\s*\+\s*(\d+)$/)
         const decMatch = expr.match(/^(\w+)\s*=\s*\1\s*-\s*(\d+)$/)
         const ppMatch  = expr.match(/^(\w+)\+\+$/)
         const mmMatch  = expr.match(/^(\w+)--$/)
-        const asgMatch = expr.match(/^(\w+)\s*=\s*(.+)$/)
 
         if (ppMatch) {
           text.push(`    inc     dword [${ppMatch[1]}]`)
@@ -370,23 +441,45 @@ function generateAsmCode(nodes, edges) {
           text.push(`    mov     eax, [${decMatch[1]}]`)
           text.push(`    sub     eax, ${decMatch[2]}`)
           text.push(`    mov     [${decMatch[1]}], eax`)
-        } else if (asgMatch) {
-          text.push(`    ; (expresión compleja — ver código C)`)
-          text.push(`    ; ${expr}`)
         } else {
+          text.push(`    ; (expresión compleja — ver código C)`)
           text.push(`    ; ${expr}`)
         }
       }
     }
 
-    // ── PRINT / IO ────────────────────────────────────────────────────────────
+    // ── PRINT / IO ────────────────────────────────────────────────────────
     else if (shape === 'print' || shape === 'io') {
-      const expr = (node.data?.expr || node.data?.label || '').trim()
-      text.push(``, `    ; ── printf("%d\\n", ${expr})`)
-      text.push(`    push    dword [${expr}]`)
-      text.push(`    push    fmt_int`)
-      text.push(`    call    printf`)
-      text.push(`    add     esp, 8`)
+      const raw   = (node.data?.expr || node.data?.label || '').trim()
+      const clean = raw.replace(/;+$/, '').trim()
+
+      // Detectar entrada: leer n
+      const inputPrefixes = ['leer ', 'leer:', 'scanf ', 'input ', 'read ']
+      let isInput = false
+      let inputVar = ''
+      for (const pref of inputPrefixes) {
+        if (clean.toLowerCase().startsWith(pref.toLowerCase())) {
+          isInput  = true
+          inputVar = clean.slice(pref.length).trim().replace(/;+$/, '').trim()
+          break
+        }
+      }
+
+      if (isInput && inputVar) {
+        text.push(``, `    ; ── scanf("%d", &${inputVar})`)
+        text.push(`    push  ${inputVar}         ; dirección de la variable`)
+        text.push(`    push  fmt_scanf`)
+        text.push(`    call  scanf`)
+        text.push(`    add   esp, 8`)
+      } else {
+        let expr = clean
+        if (expr.toLowerCase() === 'imprimir' || expr.toLowerCase() === 'i/o') expr = '0'
+        text.push(``, `    ; ── printf("%d\\n", ${expr})`)
+        text.push(`    push    dword [${expr}]`)
+        text.push(`    push    fmt_int`)
+        text.push(`    call    printf`)
+        text.push(`    add     esp, 8`)
+      }
     }
 
     // ── CONDICIÓN ─────────────────────────────────────────────────────────────
@@ -401,21 +494,17 @@ function generateAsmCode(nodes, edges) {
       if (isWhileSi || isWhileNo) {
         const loopBody = isWhileSi ? siTarget : noTarget
         const exitBody = isWhileSi ? noTarget : siTarget
-        
+
         text.push(``, `    ; ── while (${expr}) ────────────────────`)
         text.push(`.${lbl}:`)
 
-        // Parseo básico de la condición para generar cmp/jge/jle...
         const condMatch = expr.match(/^(\w+)\s*([><=!]+)\s*(.+)$/)
         if (condMatch) {
           const [, lhs, op, rhs] = condMatch
           const jmpMap = { '>=': 'jge', '<=': 'jle', '>': 'jg', '<': 'jl', '==': 'je', '!=': 'jne' }
-          let jmpOp  = jmpMap[op] || 'jge'
-          // Invertir si es un bucle SI, ya que queremos saltar a exit si NO se cumple
-          if (isWhileSi) {
-             const invMap = { 'jge': 'jl', 'jle': 'jg', 'jg': 'jle', 'jl': 'jge', 'je': 'jne', 'jne': 'je' }
-             jmpOp = invMap[jmpOp] || 'jl'
-          }
+          let jmpOp = jmpMap[op] || 'jge'
+          const invMap = { 'jge': 'jl', 'jle': 'jg', 'jg': 'jle', 'jl': 'jge', 'je': 'jne', 'jne': 'je' }
+          jmpOp = invMap[jmpOp] || 'jl'
           text.push(`    mov     eax, [${lhs}]`)
           const rhsNum = isNaN(rhs) ? `[${rhs}]` : rhs
           text.push(`    cmp     eax, ${rhsNum}`)
@@ -425,7 +514,6 @@ function generateAsmCode(nodes, edges) {
           text.push(`    ; jge .${lbl}_exit`)
         }
 
-        // Emitir cuerpo del while
         visited.add(nodeId)
         let bodyCur = loopBody
         const bodySeen = new Set([nodeId])
@@ -453,12 +541,12 @@ function generateAsmCode(nodes, edges) {
     return mainEdge?.target || null
   }
 
-  // Recorrido principal
   if (inicio) {
     visited.add(inicio.id)
     const startOuts = adjOut[inicio.id] || []
     let cur = startOuts[0]?.target || null
-    while (cur && !visited.has(cur)) {
+    let safety = 0
+    while (cur && !visited.has(cur) && safety++ < 200) {
       visited.add(cur)
       const next = visitAsm(cur)
       if (!next) break
@@ -476,14 +564,6 @@ function generateAsmCode(nodes, edges) {
 
 // ─── Generador de sintaxis Mermaid ────────────────────────────────────────────
 
-/**
- * Genera sintaxis Mermaid flowchart TD desde el grafo del canvas.
- * Usa formas estándar de diagramas de flujo ISO 5807.
- *
- * @param {object[]} nodes
- * @param {object[]} edges
- * @returns {string} Código Mermaid
- */
 function generateMermaid(nodes, edges) {
   if (!nodes.length) {
     return 'flowchart TD\n    empty["[ Canvas vacío ]"]'
@@ -491,26 +571,24 @@ function generateMermaid(nodes, edges) {
 
   const lines = ['flowchart TD']
 
-  // Nodos
   nodes.forEach(n => {
     const shape = (n.data?.shape || 'proceso').toLowerCase()
     const label = (n.data?.label || shape).replace(/"/g, "'")
     const id    = n.id.replace(/[^a-zA-Z0-9]/g, '_')
 
     if (shape === 'inicio' || shape === 'fin') {
-      lines.push(`    ${id}(["${label}"])`)               // ovalado
+      lines.push(`    ${id}(["${label}"])`)
     } else if (shape === 'condicion') {
-      lines.push(`    ${id}{"${label}"}`)                 // rombo
+      lines.push(`    ${id}{"${label}"}`)
     } else if (shape === 'io' || shape === 'print') {
-      lines.push(`    ${id}[/"${label}"/]`)               // paralelogramo
+      lines.push(`    ${id}[/"${label}"/]`)
     } else if (shape === 'ciclo') {
-      lines.push(`    ${id}{{"${label}"}}`)               // hexágono
+      lines.push(`    ${id}{{"${label}"}}`)
     } else {
-      lines.push(`    ${id}["${label}"]`)                 // rectángulo
+      lines.push(`    ${id}["${label}"]`)
     }
   })
 
-  // Estilos de nodo por tipo
   const styleMap = {
     inicio:     'fill:#134e4a,stroke:#4ade80,color:#86efac',
     fin:        'fill:#134e4a,stroke:#4ade80,color:#86efac',
@@ -531,7 +609,6 @@ function generateMermaid(nodes, edges) {
 
   lines.push('')
 
-  // Aristas
   edges.forEach(e => {
     const src = e.source.replace(/[^a-zA-Z0-9]/g, '_')
     const tgt = e.target.replace(/[^a-zA-Z0-9]/g, '_')

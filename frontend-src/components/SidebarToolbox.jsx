@@ -10,20 +10,20 @@ import React, { useState, useRef } from 'react'
 import './SidebarToolbox.css'
 
 const SIDEBAR_ITEMS = [
-  { id: 'terminal', icon: '▷', label: 'TERMINAL' },
-  { id: 'logs',     icon: '▐', label: 'LOGS'     },
   { id: 'files',    icon: '📁', label: 'FILES'    },
   { id: 'nodes',    icon: '⬡', label: 'NODES'    },
-  { id: 'build',    icon: '⚒', label: 'BUILD'    },
 ]
 const BOTTOM_ITEMS = [
   { id: 'status', icon: '◉', label: 'STATUS' },
   { id: 'info',   icon: 'ℹ', label: 'INFO'   },
 ]
 const TOOL_NODES = [
-  { type: 'inicio',    label: 'Inicio/Fin', shape: 'oval'            },
+  { type: 'inicio',    label: 'Inicio',     shape: 'oval'            },
+  { type: 'fin',       label: 'Fin',        shape: 'oval'            },
+  { type: 'asignacion',label: 'Declarar',   shape: 'rect'            },
   { type: 'proceso',   label: 'Proceso',    shape: 'rect'            },
   { type: 'condicion', label: 'Condición',  shape: 'diamond'         },
+  { type: 'print',     label: 'Imprimir',   shape: 'parallelogram'   },
   { type: 'io',        label: 'I/O',        shape: 'parallelogram'   },
   { type: 'ciclo',     label: 'Ciclo',      shape: 'hexagon'         },
 ]
@@ -31,6 +31,7 @@ const TOOL_NODES = [
 const EXPORTS = [
   { key: 'cpp',        label: 'C++',    ext: 'cpp'  },
   { key: 'asm',        label: 'ASM',    ext: 'asm'  },
+  { key: 'mermaid',    label: 'Mermaid',ext: 'md'   },
   { key: 'python',     label: 'Python', ext: 'py'   },
   { key: 'javascript', label: 'JS',     ext: 'js'   },
   { key: 'ruby',       label: 'Ruby',   ext: 'rb'   },
@@ -38,16 +39,15 @@ const EXPORTS = [
 ]
 
 function ShapeIcon({ shape }) {
-  const s = { width: 32, height: 24 }
-  const st = { fill: 'none', stroke: 'var(--txt2)', strokeWidth: 1.3 }
-  switch (shape) {
-    case 'oval':          return <svg {...s}><ellipse cx="16" cy="12" rx="13" ry="9" {...st}/></svg>
-    case 'rect':          return <svg {...s}><rect x="2" y="4" width="28" height="16" {...st}/></svg>
-    case 'diamond':       return <svg {...s}><polygon points="16,2 30,12 16,22 2,12" {...st}/></svg>
-    case 'parallelogram': return <svg {...s}><polygon points="6,4 30,4 26,20 2,20" {...st}/></svg>
-    case 'hexagon':       return <svg {...s}><polygon points="16,2 28,7 28,17 16,22 4,17 4,7" {...st}/></svg>
-    default: return null
-  }
+  return (
+    <svg width="24" height="24" viewBox="0 0 40 40">
+      {shape === 'oval' && <rect x="2" y="8" width="36" height="24" rx="12" fill="none" stroke="currentColor" strokeWidth="2"/>}
+      {shape === 'rect' && <rect x="4" y="8" width="32" height="24" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>}
+      {shape === 'diamond' && <polygon points="20,4 36,20 20,36 4,20" fill="none" stroke="currentColor" strokeWidth="2"/>}
+      {shape === 'parallelogram' && <polygon points="8,8 36,8 32,32 4,32" fill="none" stroke="currentColor" strokeWidth="2"/>}
+      {shape === 'hexagon' && <polygon points="12,8 28,8 36,20 28,32 12,32 4,20" fill="none" stroke="currentColor" strokeWidth="2"/>}
+    </svg>
+  )
 }
 
 function descargar(contenido, nombre) {
@@ -72,11 +72,16 @@ function descargar(contenido, nombre) {
  * @param {object}   props.traducciones - Traducciones { python, javascript, ruby, rust }
  * @param {object}   props.mermaidSvgRef- Ref al elemento SVG de Mermaid
  */
-export default function SidebarToolbox({ width, onCargar, cCode, cppCode, asmCode, traducciones, mermaidSvgRef }) {
-  // Compatibilidad: acepta cCode (nuevo) o cppCode (legacy)
+export default function SidebarToolbox({ width, onCargar, cCode, cppCode, asmCode, mermaidCode, traducciones, mermaidSvgRef }) {
   const codeC  = cCode || cppCode || ''
-  const [active, setActive] = useState('logs')
+  const [active, setActive] = useState('nodes')
   const fileInputRef = useRef(null)
+
+  const [toastMsg, setToastMsg] = useState(null)
+  const showToast = (msg) => {
+    setToastMsg(msg)
+    setTimeout(() => setToastMsg(null), 3000)
+  }
 
   const onDragStart = (e, type) => {
     e.dataTransfer.setData('nodeType', type)
@@ -87,38 +92,36 @@ export default function SidebarToolbox({ width, onCargar, cCode, cppCode, asmCod
     let contenido = ''
     if (key === 'cpp' || key === 'c') contenido = codeC
     else if (key === 'asm')           contenido = asmCode || ''
+    else if (key === 'mermaid')       contenido = mermaidCode || ''
     else                              contenido = traducciones?.[key] || ''
     descargar(contenido, `programa.${ext}`)
   }
 
   const handleExportSvg = () => {
-  const el = mermaidSvgRef?.current
-  if (!el) {
-    alert('Abre la pestaña FLOWCHART primero y luego descarga.')
-    return
+    const el = mermaidSvgRef?.current
+    if (!el) {
+      showToast('Abre la pestaña FLOWCHART primero y luego descarga.')
+      return
+    }
+    const svg = el.querySelector('svg')
+    if (!svg) {
+      showToast('Abre la pestaña FLOWCHART primero y luego descarga.')
+      return
+    }
+    const svgData = new XMLSerializer().serializeToString(svg)
+    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = 'diagrama.svg'
+    a.click()
+    URL.revokeObjectURL(url)
   }
-  const svg = el.querySelector('svg')
-  if (!svg) {
-    alert('Abre la pestaña FLOWCHART primero y luego descarga.')
-    return
-  }
-  const svgData = new XMLSerializer().serializeToString(svg)
-  const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href     = url
-  a.download = 'diagrama.svg'
-  a.click()
-  URL.revokeObjectURL(url)
-}
 
   return (
     <aside className="sidebar" style={{ width }}>
-      <div className="sb-header">
-        <div className="sb-title">TOOLBOX_V1.0</div>
-        <div className="sb-subtitle">ALGORITHMIC_VPROG</div>
-      </div>
-      <button className="new-node-btn">+ NEW_NODE</button>
+
+      <button className="new-node-btn" onClick={() => setActive('nodes')}>+ NEW_NODE</button>
       <div className="sb-divider" />
       <div className="sb-nav">
         {SIDEBAR_ITEMS.map(item => (
@@ -135,14 +138,14 @@ export default function SidebarToolbox({ width, onCargar, cCode, cppCode, asmCod
 
       <div className="sb-divider" style={{ marginTop: 'auto' }} />
 
-      {active === 'files' ? (
+      {active === 'files' && (
         <div className="sb-files-panel">
           <div className="sb-section-lbl">ARCHIVOS</div>
 
           <input
             ref={fileInputRef}
             type="file"
-            accept=".cpp,.c,.txt"
+            accept=".cyber,.cpp,.c,.txt,.md,.asm,.py,.js,.rb,.rs"
             style={{ display: 'none' }}
             onChange={onCargar}
           />
@@ -170,7 +173,9 @@ export default function SidebarToolbox({ width, onCargar, cCode, cppCode, asmCod
             ↓ DIAGRAMA .svg
           </button>
         </div>
-      ) : (
+      )}
+
+      {active === 'nodes' && (
         <div className="sb-toolnodes">
           <div className="sb-section-lbl">DRAG NODES</div>
           {TOOL_NODES.map(node => (
@@ -188,7 +193,30 @@ export default function SidebarToolbox({ width, onCargar, cCode, cppCode, asmCod
         </div>
       )}
 
+      {active === 'status' && (
+        <div className="sb-info-panel">
+          <div className="sb-section-lbl">IDE STATUS</div>
+          <p className="sb-info-txt">RAM: ~85K<br/>DISK: 720K<br/>SERVER: <span style={{color:'#4ade80'}}>ONLINE</span><br/>COMPILER: <span style={{color:'#4ade80'}}>READY</span><br/>AUTOSAVE: ON</p>
+        </div>
+      )}
+
+      {active === 'info' && (
+        <div className="sb-info-panel">
+          <div className="sb-section-lbl">ABOUT</div>
+          <p className="sb-info-txt">Este IDE fue diseñado para aprender programación mediante diagramas de flujo sin escribir código fuente manualmente.<br/><br/>Para empezar, ve a la pestaña NODES y arrastra elementos al lienzo.</p>
+        </div>
+      )}
+
       <div className="sb-divider" />
+      {toastMsg && (
+        <div style={{
+          background: 'rgba(244,63,94,0.9)', color: '#fff', padding: '10px', 
+          borderRadius: '4px', fontSize: '11px', margin: '0 10px 10px 10px', 
+          textAlign: 'center', border: '1px solid #f43f5e'
+        }}>
+          {toastMsg}
+        </div>
+      )}
       <div className="sb-nav">
         {BOTTOM_ITEMS.map(item => (
           <div

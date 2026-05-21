@@ -21,17 +21,7 @@ import { generateCode } from './utils/codeGenerator.js'
 import './App.css'
 
 // ── Código de ejemplo mostrado en el editor al iniciar ─────────────────────
-const DEFAULT_CODE = `int suma(int a, int b){
-    int c = a + b;
-    return c;
-}
-
-int main(){
-    int x = 5;
-    int y = 3;
-    int z = suma(x, y);
-    println z;
-}`
+const DEFAULT_CODE = ``
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
@@ -43,7 +33,7 @@ export default function App() {
   /** Código C generado (del diagrama) o el código fuente compilado */
   const [cCode,     setCCode]     = useState(DEFAULT_CODE)
   /** Código ensamblador (.s) generado */
-  const [asmCode,   setAsmCode]   = useState('; Presiona COMPILE o FLOW para generar ensamblador')
+  const [asmCode,   setAsmCode]   = useState('')
   /** Traducciones a otros lenguajes */
   const [traducciones, setTraducciones] = useState({ python: '', javascript: '', ruby: '', rust: '' })
   /** Sintaxis Mermaid del diagrama (generada por backend) */
@@ -68,8 +58,8 @@ export default function App() {
   const [buildStatus,  setBuildStatus]  = useState('VISUAL')
   const [ramUsage,     setRamUsage]     = useState('64K')
   const [serverOnline, setServerOnline] = useState(null)
-  const [sidebarW,     setSidebarW]     = useState(170)
-  const [rightW,       setRightW]       = useState(380)
+  const [sidebarW,     setSidebarW]     = useState(140)
+  const [rightW,       setRightW]       = useState(320)
   const [fontSize,     setFontSize]     = useState(11)
 
   // ── Ref: serializador del canvas React Flow ─────────────────────────────
@@ -342,8 +332,9 @@ export default function App() {
     reader.onload = ev => {
       try {
         const content = ev.target.result;
-        // Si es JSON (.cyber), cargamos flow y código
-        if (content.trim().startsWith('{')) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        
+        if (ext === 'cyber') {
           const data = JSON.parse(content);
           if (data.sourceCode) {
             setSourceCode(data.sourceCode);
@@ -351,13 +342,32 @@ export default function App() {
           }
           if (data.mermaidCode) setMermaidCode(data.mermaidCode);
           if (data.flow) {
-            setExternalFlow(data.flow);
+            // Reconstruir estructura de nodos para ReactFlow
+            const rfNodes = (data.flow.nodes || []).map(n => ({
+              id: n.id,
+              type: 'flowNode', // siempre flowNode para el custom render
+              position: n.position,
+              data: {
+                shape: n.type || 'proceso',
+                label: n.label || '',
+                varName: n.varName || null,
+                varType: n.varType || null,
+                varValue: n.varValue || null,
+                expr: n.expr || null,
+                loopType: n.loopType || null,
+              }
+            }));
+            const rfEdges = data.flow.edges || [];
+            setExternalFlow({ nodes: rfNodes, edges: rfEdges });
             setSourceOfTruth('flow');
           }
+        } else if (ext === 'md') {
+          // Es un diagrama Mermaid
+          setMermaidCode(content);
         } else {
-          // Es texto plano (cpp)
-          setSourceCode(content)
-          setSourceOfTruth('editor')
+          // Es código fuente en texto plano (cpp, c, py, js, asm, rb, rs, txt)
+          setSourceCode(content);
+          setSourceOfTruth('editor');
         }
         setFilename(file.name.replace(/\.[^/.]+$/, ""))
       } catch(err) {
@@ -369,7 +379,7 @@ export default function App() {
   }, [])
 
   const handleSaveProject = useCallback(() => {
-    const flowJson = flowSerializer.current ? flowSerializer.current() : { nodes: [], edges: [] };
+    const flowJson = serializeFlowRef.current ? serializeFlowRef.current() : { nodes: [], edges: [] };
     const exportData = {
       sourceCode,
       mermaidCode,

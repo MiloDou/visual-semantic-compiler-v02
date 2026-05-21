@@ -1,3 +1,7 @@
+/* ══════════════════════════════════════════════════════════════
+   MainCanvas.css — Estilos del área de trabajo central
+   ══════════════════════════════════════════════════════════════ */
+
 .canvas-wrapper {
   flex: 1;
   display: flex;
@@ -6,38 +10,49 @@
   overflow: hidden;
   min-width: 0;
 }
+
+/* ── Tab Bar ─────────────────────────────────────────────────── */
 .canvas-tabs {
-  height: 36px;
-  background: linear-gradient(90deg, rgba(16,20,27,0.96), rgba(12,16,22,0.96));
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  height: 38px;
+  background: linear-gradient(90deg, rgba(14,18,26,0.97), rgba(10,14,20,0.97));
+  border-bottom: 1px solid rgba(255,255,255,0.07);
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 14px;
+  gap: 4px;
+  padding: 0 10px;
   flex-shrink: 0;
 }
 .ctab {
   background: transparent;
   border: none;
-  color: var(--txt2);
+  color: var(--txt3);
   font-family: 'Courier New', monospace;
   font-size: 9px;
   padding: 0 14px;
   height: 100%;
   cursor: pointer;
-  letter-spacing: 1px;
+  letter-spacing: 1.2px;
   transition: background .15s, color .15s;
-  border-radius: 999px;
+  border-radius: 3px;
+  white-space: nowrap;
 }
-.ctab:hover { background: rgba(255,255,255,0.04); color: var(--txt); }
-.ctab.active { background: rgba(74,158,255,0.18); color: #fff; font-weight: 700; }
+.ctab:hover  { background: rgba(255,255,255,0.04); color: var(--txt); }
+.ctab.active {
+  background: rgba(74,222,128,0.1);
+  color: var(--acc);
+  font-weight: 700;
+  box-shadow: 0 -2px 0 var(--acc) inset;
+}
 .canvas-label-right {
   margin-left: auto;
   font-size: 8px;
   color: var(--txt3);
-  letter-spacing: 1px;
-  padding-right: 10px;
+  letter-spacing: 1.2px;
+  padding-right: 8px;
+  font-family: 'Courier New', monospace;
 }
+
+/* ── Flow / Editor Areas ─────────────────────────────────────── */
 .canvas-flow, .canvas-editor {
   flex: 1;
   position: relative;
@@ -45,66 +60,182 @@
   min-height: 0;
 }
 .canvas-flow {
-  background: linear-gradient(180deg, rgba(10,12,16,0.98), rgba(13,17,22,0.95));
+  background: linear-gradient(160deg, #080d0a 0%, #0a0d10 100%);
 }
 .canvas-editor {
   background: var(--bg);
 }
-.react-flow__controls-button {
-  background: rgba(255,255,255,0.06) !important;
-  border-bottom: 1px solid rgba(255,255,255,0.08) !important;
-  fill: var(--txt2) !important;
-}
-.react-flow__controls-button:hover { background: rgba(255,255,255,0.1) !important; fill: var(--txt) !important; }
-.react-flow__edge-path { stroke: var(--acc2) !important; }
-.react-flow__selection { background: rgba(124,58,237,.08) !important; border: 1px solid rgba(124,58,237,.2) !important; }
 
-/* ── Mermaid empty placeholder ─────────────────────────────── */
+/* ── ReactFlow overrides ─────────────────────────────────────── */
+.react-flow__controls {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
+}
+.react-flow__controls-button {
+  background: rgba(14,22,18,0.95) !important;
+  border-bottom: 1px solid rgba(255,255,255,0.07) !important;
+  fill: var(--txt2) !important;
+  transition: background .15s !important;
+}
+.react-flow__controls-button:hover {
+  background: rgba(74,222,128,0.1) !important;
+  fill: var(--acc) !important;
+}
+.react-flow__minimap {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
+}
+.react-flow__edge-path {
+  stroke-width: 1.5px;
+}
+.react-flow__selection {
+  background: rgba(124,58,237,.06) !important;
+  border: 1px solid rgba(124,58,237,.3) !important;
+  border-radius: 2px;
+}
+.react-flow__connection-line {
+  stroke: #7c3aed !important;
+  stroke-width: 1.5px !important;
+}
+/* Etiqueta de arista */
+.react-flow__edge-textbg { fill: transparent !important; }
+
+/* ── Flow Toolbar (top-right) ────────────────────────────────── */
+.flow-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(8,13,10,0.92);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 6px;
+  padding: 5px 8px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  font-family: 'Courier New', monospace;
+}
+.flow-toolbar-sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(255,255,255,0.1);
+  margin: 0 2px;
+}
+
+.flow-tool-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.ftb-icon  { font-size: 11px; line-height: 1; }
+.ftb-label { font-size: 8.5px; letter-spacing: .8px; color: var(--txt2); }
+
+/* Snap button */
+.snap-btn { border-color: rgba(255,255,255,0.1); }
+.snap-btn .ftb-label { color: var(--txt3); }
+.snap-btn:hover { border-color: var(--acc); background: rgba(74,222,128,0.06); }
+.snap-btn:hover .ftb-label { color: var(--acc); }
+.snap-btn.active { border-color: rgba(74,222,128,0.4); background: rgba(74,222,128,0.08); }
+.snap-btn.active .ftb-label { color: var(--acc); }
+
+/* Delete button */
+.delete-btn .ftb-label { color: var(--txt3); }
+.delete-btn:hover {
+  border-color: rgba(244,63,94,0.5);
+  background: rgba(244,63,94,0.08);
+}
+.delete-btn:hover .ftb-label { color: #f43f5e; }
+.delete-btn.has-selection {
+  border-color: rgba(244,63,94,0.4);
+  background: rgba(244,63,94,0.07);
+}
+.delete-btn.has-selection .ftb-label { color: #f87c93; }
+.delete-btn.anim {
+  animation: flashDelete .5s ease;
+}
+@keyframes flashDelete {
+  0%   { background: rgba(244,63,94,0.3); border-color: #f43f5e; }
+  100% { background: transparent; border-color: rgba(255,255,255,0.1); }
+}
+
+/* Clear button */
+.clear-btn .ftb-label { color: var(--txt3); }
+.clear-btn:hover {
+  border-color: rgba(251,191,36,0.4);
+  background: rgba(251,191,36,0.06);
+}
+.clear-btn:hover .ftb-label { color: #fbbf24; }
+.clear-btn.confirm {
+  border-color: #fbbf24 !important;
+  background: rgba(251,191,36,0.12) !important;
+  animation: pulseConfirm 1s ease infinite;
+}
+.clear-btn.confirm .ftb-label { color: #fbbf24 !important; }
+.clear-btn.anim {
+  animation: flashClear .3s ease;
+}
+@keyframes flashClear {
+  0%   { transform: scale(0.92); opacity: 0.5; }
+  100% { transform: scale(1);    opacity: 1; }
+}
+@keyframes pulseConfirm {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,0); }
+  50%       { box-shadow: 0 0 0 3px rgba(251,191,36,0.2); }
+}
+
+/* ── Flow Legend (bottom-left) ───────────────────────────────── */
+.flow-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(8,13,10,0.85);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-family: 'Courier New', monospace;
+  font-size: 8.5px;
+  color: var(--txt3);
+  letter-spacing: .4px;
+  backdrop-filter: blur(4px);
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.legend-sep { opacity: 0.3; }
+
+/* ── Mermaid empty placeholder ───────────────────────────────── */
 .mermaid-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100%;
-  gap: 8px;
+  gap: 10px;
   color: var(--txt3);
   font-family: 'Courier New', monospace;
   font-size: 11px;
   letter-spacing: .5px;
 }
+.mermaid-empty span:first-child {
+  font-size: 32px;
+  opacity: 0.3;
+}
 .mermaid-empty small {
   font-size: 9px;
-  opacity: .7;
+  opacity: .55;
   max-width: 260px;
   text-align: center;
-  line-height: 1.5;
+  line-height: 1.6;
 }
-
-/* ── Flow help panel (top-right overlay) ───────────────────── */
-.flow-help-panel {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(8,13,10,0.88);
-  border: 1px solid rgba(255,255,255,0.08);
-  padding: 4px 10px;
-  font-family: 'Courier New', monospace;
-  font-size: 9px;
-  color: var(--txt3);
-  letter-spacing: .5px;
-  backdrop-filter: blur(4px);
-  border-radius: 2px;
-}
-.flow-clear-btn {
-  background: rgba(244,63,94,0.1);
-  border: 1px solid rgba(244,63,94,0.3);
-  color: #f43f5e;
-  font-family: 'Courier New', monospace;
-  font-size: 9px;
-  letter-spacing: 1px;
-  padding: 2px 8px;
-  cursor: pointer;
-  border-radius: 2px;
-  transition: background .15s;
-}
-.flow-clear-btn:hover { background: rgba(244,63,94,0.2); }

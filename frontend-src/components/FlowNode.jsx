@@ -1,18 +1,17 @@
 //=============================================================================
 // FlowNode.jsx — Nodo personalizado del canvas React Flow
 //
-// Cada nodo soporta una forma visual diferente según su tipo de diagrama:
-//   inicio/fin   → oval       (borde redondeado)
+// Formas por tipo:
+//   inicio/fin   → oval
 //   proceso      → rectángulo
-//   condicion    → rombo      (clip-path diamond)
+//   condicion    → rombo (diamond) con etiquetas SI / NO visibles
 //   io/print     → paralelogramo
 //   ciclo        → hexágono
-//   asignacion   → rectángulo (variante de proceso con declaración de tipo)
+//   asignacion   → rectángulo con acento de color
 //
 // Interacción:
-//   • Doble clic en el nodo  → abre NodeEditor (modal)
+//   • Doble clic → abre NodeEditor (modal)
 //   • NodeEditor guarda datos via data.onUpdate() callback
-//   • El callback es inyectado por MainCanvas a través de nodesWithCallbacks
 //=============================================================================
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { Handle, Position } from 'reactflow'
@@ -29,97 +28,148 @@ const SHAPE_MAP = {
   print:      'parallelogram',
 }
 
-// Etiquetas de tipo por forma de nodo
 const NODE_META = {
-  inicio:     { color: '#4ade80', label: 'INICIO',    hint: null },
-  fin:        { color: '#4ade80', label: 'FIN',       hint: null },
-  proceso:    { color: '#a5f3fc', label: 'PROCESO',   hint: 'Ej: x = x + 1' },
-  condicion:  { color: '#fbbf24', label: 'CONDICION', hint: 'Ej: n >= 5' },
-  io:         { color: '#c084fc', label: 'I/O',       hint: 'Ej: leer n  |  imprimir n' },
-  ciclo:      { color: '#fb923c', label: 'CICLO',     hint: 'Ej: mientras n < 10' },
-  asignacion: { color: '#a5f3fc', label: 'ASIGNACION',hint: 'Ej: int x = 0' },
-  print:      { color: '#c084fc', label: 'PRINT',     hint: 'Ej: imprimir resultado' },
+  inicio:     { color: '#4ade80', label: 'INICIO',     hint: null },
+  fin:        { color: '#4ade80', label: 'FIN',         hint: null },
+  proceso:    { color: '#a5f3fc', label: 'PROCESO',     hint: 'Ej: x = x + 1' },
+  condicion:  { color: '#fbbf24', label: 'CONDICIÓN',   hint: 'Ej: n >= 5' },
+  io:         { color: '#c084fc', label: 'I/O',         hint: 'Ej: leer n' },
+  ciclo:      { color: '#fb923c', label: 'CICLO',       hint: 'Ej: n < 10' },
+  asignacion: { color: '#38bdf8', label: 'DECLARAR',    hint: 'Ej: int x = 0' },
+  print:      { color: '#c084fc', label: 'IMPRIMIR',    hint: 'Ej: n' },
 }
 
 const TIPOS = ['Entero', 'Flotante']
 
-// ── Editor Modal ───────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+// NodeEditor Modal
+// ══════════════════════════════════════════════════════════════
 function NodeEditor({ nodeId, shape, data, onSave, onClose }) {
-  const [label, setLabel]       = useState(data.label || '')
-  const [varName, setVarName]   = useState(data.varName || '')
-  const [varType, setVarType]   = useState(data.varType || 'Entero')
+  const [label,    setLabel]    = useState(data.label    || '')
+  const [varName,  setVarName]  = useState(data.varName  || '')
+  const [varType,  setVarType]  = useState(data.varType  || 'Entero')
   const [varValue, setVarValue] = useState(data.varValue || '')
-  const [expr, setExpr]         = useState(data.expr || '')
+  const [expr,     setExpr]     = useState(data.expr     || '')
+  const [loopType, setLoopType] = useState(data.loopType || 'while') // 'while' | 'if'
   const inputRef = useRef(null)
   const meta = NODE_META[shape] || { color: '#86efac', hint: null }
 
   useEffect(() => { inputRef.current?.focus() }, [])
 
   const handleSave = useCallback(() => {
-    // eslint-disable-next-line no-unused-vars
-    const { onUpdate, ...cleanData } = data  // strip the callback before building newData
+    const { onUpdate, ...cleanData } = data
     const newData = { ...cleanData, shape }
+
     if (shape === 'inicio' || shape === 'fin') {
       newData.label = meta.label
-    } else if (shape === 'asignacion' || shape === 'proceso') {
-      newData.label    = label || (varName ? `${varType === 'Entero' ? 'int' : 'float'} ${varName}${varValue ? ` = ${varValue}` : ''}` : 'proceso')
-      newData.varName  = varName
-      newData.varType  = varType
-      newData.varValue = varValue
-      newData.expr     = expr
+
+    } else if (shape === 'asignacion') {
+      // Si el usuario escribió una expresión directa: "int x = 5"
+      const trimmed = label.trim()
+      const isDirectExpr = trimmed && /^(int|float)\s+\w+/.test(trimmed)
+      if (isDirectExpr) {
+        newData.label    = trimmed
+        newData.varName  = null
+        newData.varType  = null
+        newData.varValue = null
+      } else {
+        const typeStr = varType === 'Entero' ? 'int' : 'float'
+        newData.label    = varName ? `${typeStr} ${varName} = ${varValue || '0'}` : (trimmed || 'int x = 0')
+        newData.varName  = varName
+        newData.varType  = varType
+        newData.varValue = varValue
+      }
+      newData.expr = expr
+
+    } else if (shape === 'proceso') {
+      newData.label = label || meta.hint || 'proceso'
+      newData.expr  = label
+
     } else if (shape === 'condicion') {
-      newData.label = expr || 'condición'
-      newData.expr  = expr
+      newData.label    = expr || 'condición'
+      newData.expr     = expr
+      newData.loopType = loopType
+
     } else if (shape === 'ciclo') {
       newData.label = expr || 'ciclo'
       newData.expr  = expr
+
     } else {
       // io / print
       newData.label = label || meta.hint || shape
       newData.expr  = label
     }
+
     onSave(newData)
     onClose()
-  }, [label, varName, varType, varValue, expr, shape, data, meta, onSave, onClose])
+  }, [label, varName, varType, varValue, expr, loopType, shape, data, meta, onSave, onClose])
 
   const handleKey = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSave() }
     if (e.key === 'Escape') onClose()
   }
 
-  const isFixed   = shape === 'inicio' || shape === 'fin'
-  const isDecl    = shape === 'asignacion'
-  const isProcess = shape === 'proceso'
-  const isExprOnly = shape === 'condicion' || shape === 'ciclo'
-  const isIO      = shape === 'io' || shape === 'print'
+  const isFixed    = shape === 'inicio' || shape === 'fin'
+  const isDecl     = shape === 'asignacion'
+  const isProcess  = shape === 'proceso'
+  const isCond     = shape === 'condicion'
+  const isCiclo    = shape === 'ciclo'
+  const isIO       = shape === 'io' || shape === 'print'
 
   return (
     <div className="node-editor-overlay" onClick={onClose}>
       <div className="node-editor-modal" onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
         <div className="node-editor-header" style={{ borderLeftColor: meta.color }}>
-          <span className="ned-type" style={{ color: meta.color }}>{meta.label}</span>
-          <span className="ned-id">#{nodeId.slice(-4)}</span>
-          <button className="ned-close" onClick={onClose}>✕</button>
+          <div className="ned-header-left">
+            <span className="ned-type" style={{ color: meta.color }}>{meta.label}</span>
+            <span className="ned-id">#{nodeId.slice(-6)}</span>
+          </div>
+          <button className="ned-close" onClick={onClose} title="Cerrar (Esc)">✕</button>
         </div>
 
+        {/* ── FIXED (inicio / fin) ── */}
         {isFixed && (
           <div className="ned-body">
-            <p className="ned-hint">Nodo fijo — no requiere configuración.</p>
+            <div className="ned-fixed-msg">
+              <span style={{ fontSize: '28px' }}>{shape === 'inicio' ? '▶' : '⏹'}</span>
+              <p>Nodo fijo — no requiere configuración.</p>
+            </div>
           </div>
         )}
 
+        {/* ── ASIGNACIÓN ── */}
         {isDecl && (
           <div className="ned-body">
+            <div className="ned-section-title">Expresión directa</div>
+            <div className="ned-row">
+              <label>Código</label>
+              <input
+                ref={inputRef}
+                placeholder="int x = 0"
+                value={label === 'Declarar' || label === 'declarar' || label === 'DECLARAR' ? '' : label}
+                onChange={e => setLabel(e.target.value)}
+                onKeyDown={handleKey}
+              />
+            </div>
+            <div className="ned-divider-txt">— o configura por campos —</div>
             <div className="ned-row">
               <label>Tipo</label>
-              <select value={varType} onChange={e => setVarType(e.target.value)}>
-                {TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
+              <div className="ned-toggle-group">
+                {TIPOS.map(t => (
+                  <button
+                    key={t}
+                    className={`ned-toggle ${varType === t ? 'active' : ''}`}
+                    onClick={() => setVarType(t)}
+                    style={{ '--acc-color': t === 'Entero' ? '#38bdf8' : '#f0abfc' }}
+                  >{t}</button>
+                ))}
+              </div>
             </div>
             <div className="ned-row">
               <label>Variable</label>
               <input
-                ref={inputRef}
                 placeholder="nombre"
                 value={varName}
                 onChange={e => setVarName(e.target.value)}
@@ -127,7 +177,7 @@ function NodeEditor({ nodeId, shape, data, onSave, onClose }) {
               />
             </div>
             <div className="ned-row">
-              <label>Valor inicial</label>
+              <label>Valor</label>
               <input
                 placeholder="0"
                 value={varValue}
@@ -135,80 +185,198 @@ function NodeEditor({ nodeId, shape, data, onSave, onClose }) {
                 onKeyDown={handleKey}
               />
             </div>
-            <div className="ned-hint-txt">Ej: Entero x = 5</div>
+            <div className="ned-preview">
+              {varName
+                ? `${varType === 'Entero' ? 'int' : 'float'} ${varName} = ${varValue || '0'};`
+                : (label && label !== 'Declarar' ? `${label};` : 'int x = 0;')
+              }
+            </div>
           </div>
         )}
 
+        {/* ── PROCESO ── */}
         {isProcess && (
           <div className="ned-body">
+            <div className="ned-section-title">Expresión de proceso</div>
             <div className="ned-row">
-              <label>Expresión</label>
+              <label>Código</label>
               <input
                 ref={inputRef}
                 placeholder={meta.hint || 'x = x + 1'}
-                value={label}
+                value={label === 'proceso' ? '' : label}
                 onChange={e => setLabel(e.target.value)}
                 onKeyDown={handleKey}
               />
             </div>
-            <div className="ned-hint-txt">Usa variables ya declaradas</div>
+            <div className="ned-hint-txt">Variables ya declaradas: asignación, incremento, etc.</div>
+            <div className="ned-preview">{label && label !== 'proceso' ? `${label.replace(/;+$/, '')};` : 'x = x + 1;'}</div>
           </div>
         )}
 
-        {isExprOnly && (
+        {/* ── CONDICIÓN ── */}
+        {isCond && (
           <div className="ned-body">
+            <div className="ned-section-title">Condición (Rombo)</div>
+
+            {/* Tipo de estructura */}
+            <div className="ned-row">
+              <label>Tipo</label>
+              <div className="ned-toggle-group">
+                <button
+                  className={`ned-toggle ${loopType === 'if' ? 'active' : ''}`}
+                  onClick={() => setLoopType('if')}
+                  style={{ '--acc-color': '#fbbf24' }}
+                >IF / ELSE</button>
+                <button
+                  className={`ned-toggle ${loopType === 'while' ? 'active' : ''}`}
+                  onClick={() => setLoopType('while')}
+                  style={{ '--acc-color': '#fb923c' }}
+                >WHILE</button>
+              </div>
+            </div>
+
             <div className="ned-row">
               <label>Condición</label>
               <input
                 ref={inputRef}
-                placeholder={meta.hint || 'expr'}
-                value={expr}
+                placeholder={meta.hint || 'n >= 5'}
+                value={expr === 'condición' || expr === 'condicion' ? '' : expr}
                 onChange={e => setExpr(e.target.value)}
                 onKeyDown={handleKey}
               />
             </div>
-            {shape === 'condicion' && <div className="ned-hint-txt">↓ NO &nbsp; → SI</div>}
-            {shape === 'ciclo'     && <div className="ned-hint-txt">Condición de continuación del ciclo</div>}
-          </div>
-        )}
 
-        {isIO && (
-          <div className="ned-body">
-            <div className="ned-row">
-              <label>{shape === 'print' ? 'Variable a imprimir' : 'Acción I/O'}</label>
-              <input
-                ref={inputRef}
-                placeholder={meta.hint}
-                value={label}
-                onChange={e => setLabel(e.target.value)}
-                onKeyDown={handleKey}
-              />
+            {/* Diagrama visual de SI/NO */}
+            <div className="ned-branch-diagram">
+              {loopType === 'if' ? (
+                <>
+                  <div className="ned-branch-row">
+                    <div className="ned-branch-arrow si">
+                      <span className="ned-branch-label si">✓ SI</span>
+                      <span className="ned-branch-desc">→ Rama verdadera</span>
+                    </div>
+                    <div className="ned-branch-arrow no">
+                      <span className="ned-branch-label no">✗ NO</span>
+                      <span className="ned-branch-desc">→ Rama else / falsa</span>
+                    </div>
+                  </div>
+                  <div className="ned-branch-hint">
+                    Conecta la salida <strong style={{color:'#4ade80'}}>SI</strong> al bloque verdadero y <strong style={{color:'#f43f5e'}}>NO</strong> al bloque else.
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="ned-branch-row">
+                    <div className="ned-branch-arrow si">
+                      <span className="ned-branch-label si">↺ SI</span>
+                      <span className="ned-branch-desc">→ Cuerpo del bucle</span>
+                    </div>
+                    <div className="ned-branch-arrow no">
+                      <span className="ned-branch-label no">⇢ NO</span>
+                      <span className="ned-branch-desc">→ Salida del bucle</span>
+                    </div>
+                  </div>
+                  <div className="ned-branch-hint">
+                    La rama <strong style={{color:'#4ade80'}}>SI</strong> regresa al rombo (forma el bucle), <strong style={{color:'#f43f5e'}}>NO</strong> sale.
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="ned-preview">
+              {loopType === 'if'
+                ? `if (${expr || 'condición'}) { ... } else { ... }`
+                : `while (${expr || 'condición'}) { ... }`
+              }
             </div>
           </div>
         )}
 
+        {/* ── CICLO (hexágono) ── */}
+        {isCiclo && (
+          <div className="ned-body">
+            <div className="ned-section-title">Ciclo While (Hexágono)</div>
+            <div className="ned-row">
+              <label>Condición</label>
+              <input
+                ref={inputRef}
+                placeholder={meta.hint || 'n < 10'}
+                value={expr === 'ciclo' ? '' : expr}
+                onChange={e => setExpr(e.target.value)}
+                onKeyDown={handleKey}
+              />
+            </div>
+            <div className="ned-hint-txt">Conecta la salida hacia el cuerpo del bucle y luego de vuelta al hexágono.</div>
+            <div className="ned-preview">{`while (${expr || 'condición'}) { ... }`}</div>
+          </div>
+        )}
+
+        {/* ── I/O y PRINT ── */}
+        {isIO && (
+          <div className="ned-body">
+            <div className="ned-section-title">
+              {shape === 'print' ? 'Imprimir variable' : 'Entrada / Salida'}
+            </div>
+            <div className="ned-row">
+              <label>{shape === 'print' ? 'Variable' : 'Acción'}</label>
+              <input
+                ref={inputRef}
+                placeholder={meta.hint}
+                value={label === 'I/O' || label === 'imprimir' || label === 'IMPRIMIR' ? '' : label}
+                onChange={e => setLabel(e.target.value)}
+                onKeyDown={handleKey}
+              />
+            </div>
+            <div className="ned-hint-txt">
+              {shape === 'print'
+                ? 'Escribe el nombre de la variable a imprimir.'
+                : 'Escribe: leer n  (para entrada) o el nombre de variable a mostrar.'
+              }
+            </div>
+            <div className="ned-preview">{`println ${label || meta.hint || 'n'};`}</div>
+          </div>
+        )}
+
+        {/* Footer */}
         <div className="ned-footer">
           <button className="ned-btn cancel" onClick={onClose}>CANCELAR</button>
-          <button className="ned-btn save" onClick={handleSave}>GUARDAR</button>
+          {!isFixed && (
+            <button className="ned-btn save" onClick={handleSave}>
+              <span>GUARDAR</span>
+              <span className="ned-btn-hint">↵</span>
+            </button>
+          )}
         </div>
       </div>
     </div>
   )
 }
 
-// ── FlowNode ───────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+// FlowNode
+// ══════════════════════════════════════════════════════════════
 export default function FlowNode({ id, data, selected }) {
-  const shape   = data.shape ? (SHAPE_MAP[data.shape] || 'rect') : 'rect'
+  const shape    = data.shape ? (SHAPE_MAP[data.shape] || 'rect') : 'rect'
   const rawShape = data.shape || 'proceso'
-  const meta    = NODE_META[rawShape] || { color: '#86efac', label: '?' }
+  const meta     = NODE_META[rawShape] || { color: '#86efac', label: '?' }
   const isDiamond = shape === 'diamond'
 
   const [editing, setEditing] = useState(false)
 
-  // Actualiza data via callback pasado desde MainCanvas
   const handleSave = useCallback((newData) => {
     if (data.onUpdate) data.onUpdate(id, newData)
   }, [id, data])
+
+  // Handles especiales para el diamante
+  const sourceHandles = isDiamond
+    ? [
+        { pos: Position.Right,  id: 'si',  className: 'rf-handle rf-handle-si' },
+        { pos: Position.Bottom, id: 'no',  className: 'rf-handle rf-handle-no' },
+      ]
+    : [
+        { pos: Position.Bottom, id: 'out', className: 'rf-handle' },
+        { pos: Position.Right,  id: 'outr',className: 'rf-handle' },
+      ]
 
   return (
     <>
@@ -216,28 +384,46 @@ export default function FlowNode({ id, data, selected }) {
         className={`flow-node-wrap shape-${shape} ${selected ? 'selected' : ''}`}
         onDoubleClick={() => setEditing(true)}
         title="Doble clic para editar"
+        style={{ '--node-color': meta.color }}
       >
-        <Handle type="target" position={Position.Top}    className="rf-handle" />
-        <Handle type="target" position={Position.Left}   className="rf-handle" />
+        {/* Handles de entrada */}
+        <Handle type="target" position={Position.Top}  id="in-top"  className="rf-handle" />
+        <Handle type="target" position={Position.Left} id="in-left" className="rf-handle" />
 
+        {/* Contenido */}
         <div className="flow-node-inner">
           <span className="flow-node-type" style={{ color: meta.color }}>
             {meta.label}
           </span>
-          <span className="flow-node-label">{data.label || meta.label}</span>
+          <span className="flow-node-label">
+            {data.label || meta.label}
+          </span>
         </div>
 
-        <Handle type="source" position={Position.Bottom} className="rf-handle" />
-        <Handle type="source" position={Position.Right}  className="rf-handle" />
-
+        {/* Etiquetas SI / NO en el diamante */}
         {isDiamond && (
           <>
-            <span className="edge-label si-label">SI</span>
-            <span className="edge-label no-label">NO</span>
+            <span className="diamond-si-label">SI ✓</span>
+            <span className="diamond-no-label">NO ✗</span>
           </>
         )}
 
-        <div className="node-edit-hint">✎</div>
+        {/* Handles de salida */}
+        {sourceHandles.map(h => (
+          <Handle
+            key={h.id}
+            type="source"
+            position={h.pos}
+            id={h.id}
+            className={h.className}
+          />
+        ))}
+
+        {/* Icono de edición */}
+        <div className="node-edit-hint" title="Doble clic para editar">✎</div>
+
+        {/* Borde de color en la parte superior */}
+        <div className="node-color-bar" style={{ background: meta.color }} />
       </div>
 
       {editing && (

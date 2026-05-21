@@ -1,45 +1,46 @@
 //=============================================================================
 // MainCanvas.jsx — Área de trabajo central del IDE
 //
-// Contiene tres pestañas:
-//   FLOWCHART → Canvas interactivo React Flow (arrastrar/soltar/conectar nodos)
-//   MERMAID   → Render del diagrama Mermaid generado por el backend
-//   EDITOR    → Editor de código Monaco (lenguaje C-like)
+// Pestañas:
+//   FLOWCHART → Canvas interactivo React Flow
+//   MERMAID   → Render del diagrama Mermaid
+//   EDITOR    → Editor de código Monaco
 //
-// Responsabilidades clave:
-//   • Gestión del estado de nodos y aristas (useNodesState / useEdgesState)
-//   • Inyección del callback onUpdate en cada nodo (para edición inline)
-//   • Serialización del canvas a JSON via serializeFlowToJSON()
-//   • Registro del serializador en App.jsx via onSerialize prop
+// Mejoras v2:
+//   • Botones ELIMINAR / LIMPIAR con animaciones y confirmación visual
+//   • SnapGrid configurable (botón en panel)
+//   • Etiquetas SI/NO en aristas de condición más visibles
+//   • Toolbar flotante con acciones rápidas
 //=============================================================================
 import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react'
 import ReactFlow, {
   Background, Controls, MiniMap,
   addEdge, useNodesState, useEdgesState,
-  MarkerType, Panel,
+  MarkerType, Panel, BackgroundVariant,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import Editor from '@monaco-editor/react'
 import mermaid from 'mermaid'
 import './MainCanvas.css'
-import { INITIAL_NODES, INITIAL_EDGES } from '../data/flowData.js'
+import { INITIAL_NODES, INITIAL_EDGES, FACTORIAL_NODES, FACTORIAL_EDGES } from '../data/flowData.js'
 import FlowNode from './FlowNode.jsx'
+
 
 mermaid.initialize({
   startOnLoad: false,
   theme: 'base',
   themeVariables: {
-    primaryColor: '#0c1210',
-    primaryTextColor: '#86efac',
+    primaryColor:       '#0c1210',
+    primaryTextColor:   '#86efac',
     primaryBorderColor: '#a855f7',
-    lineColor: '#4ade80',
-    secondaryColor: '#101a15',
-    tertiaryColor: '#080d0a',
-    edgeLabelBackground: '#080d0a',
-    nodeTextColor: '#86efac',
-    clusterBkg: '#080d0a',
-    titleColor: '#86efac',
-    fontFamily: "'Share Tech Mono', 'Courier New', monospace",
+    lineColor:          '#4ade80',
+    secondaryColor:     '#101a15',
+    tertiaryColor:      '#080d0a',
+    edgeLabelBackground:'#080d0a',
+    nodeTextColor:      '#86efac',
+    clusterBkg:         '#080d0a',
+    titleColor:         '#86efac',
+    fontFamily:         "'Share Tech Mono', 'Courier New', monospace",
   }
 })
 
@@ -81,34 +82,12 @@ function beforeMount(monaco) {
   })
 }
 
-// Tabs del canvas principal
 const MAIN_TABS = ['FLOWCHART', 'MERMAID', 'EDITOR']
 
 /**
- * Serializa el estado actual del canvas React Flow en un objeto JSON
- * estructurado listo para enviarse al endpoint /api/compilar_diagrama.
- *
- * Formato resultante:
- * {
- *   version: '1.0',
- *   nodes:   [{ id, type, label, varName, varType, varValue, expr, position }],
- *   edges:   [{ id, source, target, label }]
- * }
- *
- * @param {import('reactflow').Node[]} nodes - Nodos actuales del canvas
- * @param {import('reactflow').Edge[]} edges - Aristas actuales del canvas
- * @returns {{ version: string, nodes: object[], edges: object[] }}
+ * Serializa el estado actual del canvas React Flow en JSON estructurado.
  */
 export function serializeFlowToJSON(nodes, edges) {
-  const nodeMap = {}
-  nodes.forEach(n => { nodeMap[n.id] = n })
-
-  const adjOut = {}  // nodo → [{ target, label }]
-  edges.forEach(e => {
-    if (!adjOut[e.source]) adjOut[e.source] = []
-    adjOut[e.source].push({ target: e.target, label: e.label || '' })
-  })
-
   const serializedNodes = nodes.map(n => ({
     id:       n.id,
     type:     n.data.shape || 'proceso',
@@ -117,6 +96,7 @@ export function serializeFlowToJSON(nodes, edges) {
     varType:  n.data.varType  || null,
     varValue: n.data.varValue || null,
     expr:     n.data.expr     || null,
+    loopType: n.data.loopType || null,
     position: n.position,
   }))
 
@@ -125,24 +105,38 @@ export function serializeFlowToJSON(nodes, edges) {
     source: e.source,
     target: e.target,
     label:  e.label || '',
+    sourceHandle: e.sourceHandle || null,
   }))
 
+  return { version: '1.0', nodes: serializedNodes, edges: serializedEdges }
+}
+
+// Estilos de arista según tipo
+const makeEdgeStyle = (label) => {
+  if (label === 'SI') return {
+    style:        { stroke: '#4ade80', strokeWidth: 2.5 },
+    markerEnd:    { type: MarkerType.ArrowClosed, color: '#4ade80' },
+    label:        '✔ SI',
+    labelStyle:   { fill: '#4ade80', fontSize: 13, fontWeight: 900, fontFamily: 'Courier New', transform: 'translate(0, -12px)' },
+    labelBgStyle: { fill: '#0a1a11', strokeWidth: 1.5, stroke: '#4ade80', rx: 4, ry: 4, transform: 'translate(0, -12px)' },
+    labelBgPadding: [6, 8],
+  }
+  if (label === 'NO') return {
+    style:        { stroke: '#f43f5e', strokeWidth: 2.5 },
+    markerEnd:    { type: MarkerType.ArrowClosed, color: '#f43f5e' },
+    label:        '✖ NO',
+    labelStyle:   { fill: '#f43f5e', fontSize: 13, fontWeight: 900, fontFamily: 'Courier New', transform: 'translate(0, -12px)' },
+    labelBgStyle: { fill: '#1f0d11', strokeWidth: 1.5, stroke: '#f43f5e', rx: 4, ry: 4, transform: 'translate(0, -12px)' },
+    labelBgPadding: [6, 8],
+  }
   return {
-    version: '1.0',
-    nodes:   serializedNodes,
-    edges:   serializedEdges,
+    style:     { stroke: '#7c3aed', strokeWidth: 1.5 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#7c3aed' },
   }
 }
 
 /**
  * MainCanvas — Componente del área de trabajo central.
- *
- * @param {object}   props
- * @param {string}   props.sourceCode   - Código fuente del editor de texto
- * @param {Function} props.onCodeChange - Callback al editar el código fuente
- * @param {string}   props.mermaidCode  - Sintaxis Mermaid recibida del backend
- * @param {object}   props.mermaidSvgRef- Ref para acceder al SVG de Mermaid (export)
- * @param {Function} props.onSerialize  - Recibe la fn serializadora del canvas
  */
 export default function MainCanvas({
   sourceCode, onCodeChange,
@@ -156,23 +150,22 @@ export default function MainCanvas({
   const [nodes, setNodes, onNodesChange] = useNodesState(INITIAL_NODES)
   const [edges, setEdges, onEdgesChange] = useEdgesState(INITIAL_EDGES)
   const [nodeCount, setNodeCount] = useState(INITIAL_NODES.length)
+  const [snapEnabled, setSnapEnabled] = useState(true)
+  const [deleteAnim, setDeleteAnim] = useState(false)
+  const [clearAnim,  setClearAnim]  = useState(false)
   const mermaidRef = useRef(null)
 
-  // Registra la función serializar en App.jsx para usarla al compilar
+  // Registra la función serializar en App.jsx
   useEffect(() => {
-    if (onSerialize) {
-      onSerialize(() => serializeFlowToJSON(nodes, edges))
-    }
+    if (onSerialize) onSerialize(() => serializeFlowToJSON(nodes, edges))
   }, [nodes, edges, onSerialize])
 
-  // Sincronización en tiempo real con App.jsx para generar código
+  // Sincronización en tiempo real con App.jsx
   useEffect(() => {
-    if (onFlowChange) {
-      onFlowChange(nodes, edges)
-    }
+    if (onFlowChange) onFlowChange(nodes, edges)
   }, [nodes, edges, onFlowChange])
 
-  // Inyectar flujo externo (cuando el Editor es la fuente de verdad)
+  // Inyectar flujo externo
   useEffect(() => {
     if (externalFlow) {
       setNodes(externalFlow.nodes || [])
@@ -199,7 +192,7 @@ export default function MainCanvas({
     ))
   }, [setNodes])
 
-  // Inyecta onUpdate en cada nodo para que el editor pueda hacer callback
+  // Inyecta onUpdate en cada nodo
   const nodesWithCallbacks = useMemo(() =>
     nodes.map(n => ({
       ...n,
@@ -209,14 +202,50 @@ export default function MainCanvas({
 
   const nodeTypes = useMemo(() => ({ flowNode: FlowNode }), [])
 
-  const onConnect = useCallback(params =>
-    setEdges(eds => addEdge({
-      ...params,
-      style:     { stroke: '#7c3aed', strokeWidth: 1.5 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#7c3aed' },
-    }, eds)),
-  [setEdges])
+  // ── Conexión de aristas ───────────────────────────────────────────────────
+  const onConnect = useCallback(params => {
+    setEdges(eds => {
+      const sourceNode = nodes.find(n => n.id === params.source)
+      const isCond = sourceNode && sourceNode.data.shape === 'condicion'
+      const existingOuts = eds.filter(e => e.source === params.source)
 
+      let label = ''
+      if (isCond) {
+        // Si viene del handle 'si' → etiqueta SI, si viene del 'no' → NO
+        if (params.sourceHandle === 'si') {
+          label = 'SI'
+        } else if (params.sourceHandle === 'no') {
+          label = 'NO'
+        } else {
+          // Auto-detectar: primera conexión = SI, segunda = NO
+          const hasSi = existingOuts.some(e => e.label === 'SI')
+          label = hasSi ? 'NO' : 'SI'
+        }
+      }
+
+      const edgeStyle = makeEdgeStyle(label)
+      const newEdge = {
+        ...params,
+        id: `e-${params.source}-${params.target}-${Date.now()}`,
+        ...edgeStyle,
+        type: 'smoothstep',
+        animated: false,
+      }
+
+      return addEdge(newEdge, eds)
+    })
+  }, [setEdges, nodes])
+
+  // ── Doble clic en arista → alternar SI/NO ─────────────────────────────────
+  const onEdgeDoubleClick = useCallback((e, edge) => {
+    setEdges(eds => eds.map(ed => {
+      if (ed.id !== edge.id) return ed
+      const newLabel = ed.label === 'SI' ? 'NO' : ed.label === 'NO' ? 'SI' : ed.label
+      return { ...ed, ...makeEdgeStyle(newLabel) }
+    }))
+  }, [setEdges])
+
+  // ── Drag & drop desde sidebar ──────────────────────────────────────────────
   const onDragOver = useCallback(e => {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'copy'
@@ -227,8 +256,11 @@ export default function MainCanvas({
     const type = e.dataTransfer.getData('nodeType')
     if (!type) return
     const bounds   = e.currentTarget.getBoundingClientRect()
-    const position = { x: e.clientX - bounds.left - 60, y: e.clientY - bounds.top - 24 }
-    const newId    = `node-${Date.now()}`
+    const position = {
+      x: e.clientX - bounds.left - 65,
+      y: e.clientY - bounds.top  - 26,
+    }
+    const newId = `node-${Date.now()}`
 
     const DEFAULT_LABELS = {
       inicio:     'INICIO',
@@ -237,35 +269,88 @@ export default function MainCanvas({
       condicion:  'condición',
       io:         'I/O',
       ciclo:      'ciclo',
-      asignacion: 'declarar',
+      asignacion: 'Declarar',
       print:      'imprimir',
     }
 
     setNodes(nds => [...nds, {
-      id:       newId,
-      type:     'flowNode',
+      id:   newId,
+      type: 'flowNode',
       position,
       data: {
-        label:  DEFAULT_LABELS[type] || type.toUpperCase(),
-        shape:  type,
+        label: DEFAULT_LABELS[type] || type.toUpperCase(),
+        shape: type,
       },
     }])
     setNodeCount(c => c + 1)
   }, [setNodes])
 
-  // Limpiar lienzo
-  const handleClear = useCallback(() => {
-    if (!window.confirm('¿Borrar todos los nodos y conexiones?')) return
-    setNodes([])
-    setEdges([])
-    setNodeCount(0)
-  }, [setNodes, setEdges])
-
-  // Eliminar elemento(s) seleccionado(s)
+  // ── Eliminar seleccionados ─────────────────────────────────────────────────
   const handleDeleteSelected = useCallback(() => {
+    const selectedNodes = nodes.filter(n => n.selected)
+    const selectedEdges = edges.filter(e => e.selected)
+    if (!selectedNodes.length && !selectedEdges.length) return
+
+    setDeleteAnim(true)
+    setTimeout(() => setDeleteAnim(false), 600)
+
     setNodes(nds => nds.filter(n => !n.selected))
     setEdges(eds => eds.filter(e => !e.selected))
+    setNodeCount(c => Math.max(0, c - selectedNodes.length))
+  }, [nodes, edges, setNodes, setEdges])
+
+  // ── Limpiar todo ───────────────────────────────────────────────────────────
+  const handleClear = useCallback(() => {
+    // Confirmación visual sin alert del navegador
+    setClearAnim(true)
+    setTimeout(() => {
+      setClearAnim(false)
+      setNodes([])
+      setEdges([])
+      setNodeCount(0)
+    }, 300)
   }, [setNodes, setEdges])
+
+  const [clearConfirm, setClearConfirm] = useState(false)
+
+  const handleClearClick = useCallback(() => {
+    if (!clearConfirm) {
+      setClearConfirm(true)
+      setTimeout(() => setClearConfirm(false), 3000)
+    } else {
+      setClearConfirm(false)
+      handleClear()
+    }
+  }, [clearConfirm, handleClear])
+
+  // ── Cargar diagrama factorial ──────────────────────────────────────────
+  const handleLoadFactorial = useCallback(() => {
+    const factNodes = FACTORIAL_NODES.map(n => ({
+      ...n,
+      data: { ...n.data, onUpdate: updateNodeData },
+    }))
+    setNodes(factNodes)
+    setEdges(FACTORIAL_EDGES)
+    setNodeCount(FACTORIAL_NODES.length)
+  }, [setNodes, setEdges, updateNodeData])
+
+
+  // Tecla Delete para eliminar seleccionados
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        // Solo si no hay un input/textarea enfocado
+        if (document.activeElement.tagName === 'INPUT' ||
+            document.activeElement.tagName === 'TEXTAREA') return
+        handleDeleteSelected()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [handleDeleteSelected])
+
+  // Contar seleccionados
+  const selectedCount = nodes.filter(n => n.selected).length + edges.filter(e => e.selected).length
 
   return (
     <div className="canvas-wrapper">
@@ -277,7 +362,11 @@ export default function MainCanvas({
             className={`ctab ${activeTab === t ? 'active' : ''}`}
             onClick={() => setActiveTab(t)}
           >
+            {t === 'FLOWCHART' && '⬡ '}
+            {t === 'MERMAID'   && '◈ '}
+            {t === 'EDITOR'    && '{ '}
             {t}
+            {t === 'EDITOR' && ' }'}
           </button>
         ))}
         <span className="canvas-label-right">
@@ -296,43 +385,89 @@ export default function MainCanvas({
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            onEdgeDoubleClick={onEdgeDoubleClick}
             onDragOver={onDragOver}
             onDrop={onDrop}
             nodeTypes={nodeTypes}
+            snapToGrid={snapEnabled}
+            snapGrid={[16, 16]}
             fitView
-            deleteKeyCode="Delete"
+            deleteKeyCode={null}  /* manejamos con keydown propio */
+            connectionLineStyle={{ stroke: '#7c3aed', strokeWidth: 1.5 }}
+            connectionLineType="smoothstep"
             style={{ background: 'transparent' }}
           >
-            <Background color="#ffffff08" gap={22} size={1} />
+            <Background
+              variant={BackgroundVariant.Lines}
+              color="#a855f733"
+              gap={24}
+              lineWidth={1}
+            />
             <Controls style={{
               background: 'var(--bg2)',
               border: '1px solid var(--bdr)',
-              borderRadius: 0,
+              borderRadius: 4,
             }} />
             <MiniMap
-              style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)' }}
+              style={{ background: 'var(--bg2)', border: '1px solid var(--bdr)', borderRadius: 4 }}
               nodeColor="#a855f744"
               maskColor="#080d0acc"
             />
 
-            {/* Panel de ayuda contextual */}
+            {/* ── Toolbar flotante (top-right) ── */}
             <Panel position="top-right">
-              <div className="flow-help-panel">
+              <div className="flow-toolbar">
+
+
+
+                {/* Eliminar seleccionados */}
+                <button
+                  className={`flow-tool-btn delete-btn ${deleteAnim ? 'anim' : ''} ${selectedCount > 0 ? 'has-selection' : ''}`}
+                  onClick={handleDeleteSelected}
+                  title={selectedCount > 0 ? `Eliminar ${selectedCount} elemento(s) seleccionado(s)` : 'Selecciona nodos o aristas primero'}
+                >
+                  <span className="ftb-icon">🗑</span>
+                  <span className="ftb-label">
+                    ELIMINAR{selectedCount > 0 ? ` (${selectedCount})` : ''}
+                  </span>
+                </button>
+
+                {/* Limpiar todo */}
+                <button
+                  className={`flow-tool-btn clear-btn ${clearConfirm ? 'confirm' : ''} ${clearAnim ? 'anim' : ''}`}
+                  onClick={handleClearClick}
+                  title={clearConfirm ? '⚠ Click de nuevo para confirmar borrado total' : 'Limpiar todo el canvas'}
+                >
+                  <span className="ftb-icon">{clearConfirm ? '⚠' : '✕'}</span>
+                  <span className="ftb-label">
+                    {clearConfirm ? '¿CONFIRMAR?' : 'LIMPIAR'}
+                  </span>
+                </button>
+              </div>
+            </Panel>
+
+            {/* ── Leyenda inferior ── */}
+            <Panel position="bottom-left">
+              <div className="flow-legend">
+                <span className="legend-item">
+                  <span className="legend-dot" style={{background:'#4ade80'}}/>SI
+                </span>
+                <span className="legend-item">
+                  <span className="legend-dot" style={{background:'#f43f5e'}}/>NO
+                </span>
+                <span className="legend-item">
+                  <span className="legend-dot" style={{background:'#7c3aed'}}/>Flujo
+                </span>
+                <span className="legend-sep">•</span>
                 <span>✎ doble clic = editar</span>
                 <span>⌦ Del = eliminar</span>
-                <button className="flow-clear-btn" onClick={handleDeleteSelected} style={{ color: '#f43f5e', borderColor: '#f43f5e', marginRight: '8px' }}>
-                  🗑️ ELIMINAR
-                </button>
-                <button className="flow-clear-btn" onClick={handleClear}>
-                  ✕ LIMPIAR
-                </button>
               </div>
             </Panel>
           </ReactFlow>
         </div>
       )}
 
-      {/* ════ MERMAID VIEWER ════ */}
+      {/* ════ MERMAID ════ */}
       {activeTab === 'MERMAID' && (
         <div className="canvas-flow">
           {mermaidCode ? (
@@ -348,6 +483,7 @@ export default function MainCanvas({
             </div>
           ) : (
             <div className="mermaid-empty">
+              <span>◈</span>
               <span>No hay diagrama Mermaid.</span>
               <small>Compila un diagrama desde la pestaña FLOWCHART para ver el grafo aquí.</small>
             </div>

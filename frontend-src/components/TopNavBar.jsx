@@ -51,46 +51,30 @@ export default function TopNavBar({
     <nav className="topnav">
       <div className="topnav-left">
         <div className="app-logo">
-          <div className="logo-sq">C</div>
-          <span className="app-name">CYBER_DRIVE</span>
-        </div>
-        <div className="nav-menus">
-          <div className="dropdown-container">
-            <button className="menu-btn" onClick={() => setShowFileMenu(!showFileMenu)}>
-              FILE ▾
-            </button>
-            {showFileMenu && (
-              <div className="dropdown-menu" onMouseLeave={() => setShowFileMenu(false)}>
-                <label className="dropdown-item">
-                  Cargar Archivo (.cyber)
-                  <input type="file" accept=".cyber" hidden onChange={(e) => {
-                    setShowFileMenu(false);
-                    if (onLoadFile) onLoadFile(e);
-                  }} />
-                </label>
-                <div className="dropdown-item" onClick={() => { setShowFileMenu(false); if (onSaveProject) onSaveProject() }}>
-                  Guardar Proyecto (.cyber)
-                </div>
-                <div className="dropdown-divider"></div>
-                <div className="dropdown-item" onClick={() => { setShowFileMenu(false); if (onExportCpp) onExportCpp() }}>
-                  Exportar C++
-                </div>
-                <div className="dropdown-item" onClick={() => { setShowFileMenu(false); if (onExportMermaid) onExportMermaid() }}>
-                  Exportar Mermaid
-                </div>
-              </div>
-            )}
-          </div>
+          <div className="logo-sq" style={{background:'#a855f7', color:'#4ade80', borderColor:'#4ade80', fontWeight: 'bold', fontSize: '12px'}}>01</div>
+          <span className="app-name">Compiler</span>
         </div>
       </div>
 
       <div className="topnav-center">
-        <input
-          className="filename-input"
-          value={filename}
-          onChange={e => setFilename(e.target.value)}
-          spellCheck={false}
-        />
+        <div className="filename-container" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.03)', padding: '2px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
+          <span style={{ fontSize: '12px', color: '#86efac', fontWeight: 'bold', letterSpacing: '0.5px' }}>PROJECT:</span>
+          <input
+            className="filename-input"
+            style={{ border: 'none', background: 'transparent', padding: '6px 0', width: '140px', fontSize: '13px' }}
+            value={filename}
+            onChange={e => setFilename(e.target.value)}
+            spellCheck={false}
+            placeholder="noname"
+          />
+        </div>
+        <button
+          className="compile-btn"
+          onClick={onSaveProject}
+          title="Guardar todo el proyecto (.cyber)"
+        >
+          💾 SAVE ALL
+        </button>
         {/* Botón compilar texto */}
         <button
           className={btnClass}
@@ -112,30 +96,6 @@ export default function TopNavBar({
       </div>
 
       <div className="topnav-right">
-        {/* Font size controls */}
-        {onFontSize && (
-          <div className="font-ctrl">
-            <button className="font-btn" onClick={() => onFontSize(-1)} title="Reducir fuente">A-</button>
-            <span className="font-size-lbl">{fontSize}px</span>
-            <button className="font-btn" onClick={() => onFontSize(+1)} title="Aumentar fuente">A+</button>
-          </div>
-        )}
-        <div className={`server-status ${serverDot}`} title={
-          serverOnline === null ? 'Conectando...'
-          : serverOnline ? 'Backend online' : 'Backend offline'
-        }>
-          <span className="srv-dot" />
-          <span className="srv-lbl">
-            {serverOnline === null ? 'CHECK' : serverOnline ? 'API' : 'OFFLINE'}
-          </span>
-        </div>
-        <span className="stat-pill">RAM: <b>{ramUsage}</b></span>
-        <span className="stat-pill">DISK: <b>720K</b></span>
-        <span className="stat-pill">ST: <b>{buildStatus}</b></span>
-        <span className="stat-pill time">{time}</span>
-        <button className="icon-btn" title="Settings">⚙</button>
-        <button className="icon-btn" title="Display">▣</button>
-        <button className="icon-btn" title="Help">?</button>
       </div>
     </nav>
   )

@@ -28,10 +28,26 @@ def identificar_tokens(texto):
     )
     patron_regex = re.compile(patron_general)
     tokens_encontrados = []
+    pos = 0
     for match in patron_regex.finditer(texto):
-        for tok, valor in match.groupdict().items():
-            if valor is not None and tok != "WHITESPACE":
-                tokens_encontrados.append((tok, valor))
+        # Verificar si hay un hueco (carácter no reconocido) antes de este match
+        if match.start() > pos:
+            # Carácter(es) no reconocido(s)
+            valor_error = texto[pos:match.start()]
+            tokens_encontrados.append(('ERROR', valor_error))
+        # Agregar el token matcheado
+        tipo = match.lastgroup
+        valor = match.group()
+        if tipo == 'WHITESPACE':
+            if '\n' in valor:
+                tokens_encontrados.append(('NEWLINE', '\n'))
+        else:
+            tokens_encontrados.append((tipo, valor))
+        pos = match.end()
+    # Verificar si hay caracteres no reconocidos al final
+    if pos < len(texto):
+        valor_error = texto[pos:]
+        tokens_encontrados.append(('ERROR', valor_error))
     return tokens_encontrados
 
 
@@ -79,6 +95,21 @@ class NodoPrograma(NodoAST):
         _asm_data = []
         self.variables = []
 
+        def recolectar_variables(instrucciones):
+            """Recorre recursivamente las instrucciones para recopilar variables declaradas."""
+            for inst in instrucciones:
+                if isinstance(inst, NodoAsignacion) and inst.tipo is not None:
+                    self.variables.append((inst.tipo[1], inst.nombre[1]))
+                elif isinstance(inst, NodoIf):
+                    recolectar_variables(inst.cuerpo_if)
+                    if inst.cuerpo_else:
+                        recolectar_variables(inst.cuerpo_else)
+                elif isinstance(inst, NodoWhile):
+                    recolectar_variables(inst.cuerpo)
+                elif isinstance(inst, NodoFor):
+                    recolectar_variables([inst.inicializacion])
+                    recolectar_variables(inst.cuerpo)
+
         codigo = [
             "extern printf",
             "section .text",
@@ -93,9 +124,8 @@ class NodoPrograma(NodoAST):
 
         for funcion in self.funciones:
             codigo.append(funcion.generarAssembler())
+            recolectar_variables(funcion.cuerpo)
             for inst in funcion.cuerpo:
-                if hasattr(inst, 'nombre') and inst.nombre and hasattr(inst, 'tipo') and inst.tipo:
-                    self.variables.append((inst.tipo[1], inst.nombre[1]))
                 if hasattr(inst, 'expresion') and isinstance(inst.expresion, NodoFloat):
                     val = inst.expresion.valor[1]
                     etiqueta = "val_" + val.replace(".", "_")
@@ -107,9 +137,7 @@ class NodoPrograma(NodoAST):
 
         codigo.append("_start:")
         if self.main:
-            for inst in self.main.cuerpo:
-                if hasattr(inst, 'nombre') and inst.nombre and hasattr(inst, 'tipo') and inst.tipo:
-                    self.variables.append((inst.tipo[1], inst.nombre[1]))
+            recolectar_variables(self.main.cuerpo)
             codigo.append(self.main.generarAssembler())
 
         codigo.append("    mov eax, 1      ; sys_exit")
@@ -163,12 +191,18 @@ class NodoFuncion(NodoAST):
         return f"fn {self.nombre[1]}({params}){ret} {{\n    {cuerpo}\n}}"
 
     def generarAssembler(self):
-        codigo = f"{self.nombre[1]}:\n"
-        for param in self.parametros:
+        if self.nombre[1] != 'main':
+            codigo = f"{self.nombre[1]}:\n"
+        else:
+            codigo = ""
+        for param in reversed(self.parametros):  # ← reversed aquí
             codigo += "    pop   eax\n"
             codigo += f"    mov [{param.nombre[1]}], eax\n"
         codigo += "\n".join(c.generarAssembler() for c in self.cuerpo)
-        codigo += "\n    ret\n"
+        if self.nombre[1] != 'main':
+            ultimo = self.cuerpo[-1] if self.cuerpo else None
+            if not isinstance(ultimo, NodoRetorno):
+                codigo += "\n    ret\n"
         return codigo
 
 
@@ -252,7 +286,10 @@ class NodoRetorno(NodoAST):
     def traducirJS(self):   return f"return {self.expresion.traducirJS()};"
     def traducirRuby(self): return f"return {self.expresion.traducirRuby()}"
     def traducirRust(self): return f"return {self.expresion.traducirRust()};"
-    def generarAssembler(self): return self.expresion.generarAssembler()
+    def generarAssembler(self):
+        codigo = self.expresion.generarAssembler()
+        codigo += "\n    ret"
+        return codigo
 
 
 class NodoPrint(NodoAST):
@@ -337,24 +374,27 @@ class NodoIf(NodoAST):
         global _asm_label_counter
         _asm_label_counter += 1
         lbl = f"if_{_asm_label_counter}"
-        
+    
         codigo = []
         codigo.append(f"    ; ── IF ──────────────────────────────────────────")
         codigo.append(self.condicion.generarAssembler())
         codigo.append("    cmp   eax, 0")
-        codigo.append(f"    je    .{lbl}_else")
-        
+        codigo.append(f"    je    {lbl}_else")
+    
         for inst in self.cuerpo_if:
             codigo.append(inst.generarAssembler())
-            
-        codigo.append(f"    jmp   .{lbl}_end")
-        codigo.append(f".{lbl}_else:")
-        
+    
+        ultimo_if = self.cuerpo_if[-1] if self.cuerpo_if else None
+        if not isinstance(ultimo_if, NodoRetorno):
+            codigo.append(f"    jmp   {lbl}_end")
+    
+        codigo.append(f"{lbl}_else:")
+    
         if self.cuerpo_else:
             for inst in self.cuerpo_else:
                 codigo.append(inst.generarAssembler())
-                
-        codigo.append(f".{lbl}_end:")
+    
+        codigo.append(f"{lbl}_end:")
         return "\n".join(codigo)
 
 
@@ -390,16 +430,16 @@ class NodoWhile(NodoAST):
         
         codigo = []
         codigo.append(f"    ; ── WHILE ───────────────────────────────────────")
-        codigo.append(f".{lbl}_start:")
+        codigo.append(f"{lbl}_start:")
         codigo.append(self.condicion.generarAssembler())
         codigo.append("    cmp   eax, 0")
-        codigo.append(f"    je    .{lbl}_end")
+        codigo.append(f"    je    {lbl}_end")
         
         for inst in self.cuerpo:
             codigo.append(inst.generarAssembler())
             
-        codigo.append(f"    jmp   .{lbl}_start")
-        codigo.append(f".{lbl}_end:")
+        codigo.append(f"    jmp   {lbl}_start")
+        codigo.append(f"{lbl}_end:")
         return "\n".join(codigo)
 
 
@@ -443,17 +483,17 @@ class NodoFor(NodoAST):
         codigo = []
         codigo.append(f"    ; ── FOR ─────────────────────────────────────────")
         codigo.append(self.inicializacion.generarAssembler())
-        codigo.append(f".{lbl}_start:")
+        codigo.append(f"{lbl}_start:")
         codigo.append(self.condicion.generarAssembler())
         codigo.append("    cmp   eax, 0")
-        codigo.append(f"    je    .{lbl}_end")
+        codigo.append(f"    je    {lbl}_end")
         
         for inst in self.cuerpo:
             codigo.append(inst.generarAssembler())
             
         codigo.append(self.incremento.generarAssembler())
-        codigo.append(f"    jmp   .{lbl}_start")
-        codigo.append(f".{lbl}_end:")
+        codigo.append(f"    jmp   {lbl}_start")
+        codigo.append(f"{lbl}_end:")
         return "\n".join(codigo)
 
 
@@ -528,7 +568,7 @@ class NodoLlamadaFuncion(NodoAST):
 
     def generarAssembler(self):
         codigo = []
-        for arg in reversed(self.argumentos):
+        for arg in self.argumentos:
             codigo.append(arg.generarAssembler())
             codigo.append("    push  eax")
         codigo.append(f"    call  {self.nombre_funcion}")
@@ -627,18 +667,26 @@ class Parser:
     def __init__(self, tokens):
         self.tokens = tokens
         self.pos    = 0
+        self.linea  = 1
 
     def obtener_token(self):
+        while self.pos < len(self.tokens) and self.tokens[self.pos][0] == 'NEWLINE':
+            self.linea += 1
+            self.pos += 1
         return self.tokens[self.pos] if self.pos < len(self.tokens) else None
 
     def coincidir(self, tipo_esperado):
         tok = self.obtener_token()
         if tok and tok[0] == tipo_esperado:
+            # Contar saltos de línea en el token
+            if tok[1] == '\n':
+                self.linea += 1
             self.pos += 1
             return tok
+        tok_valor = tok[1] if tok else 'EOF'
         raise SyntaxError(
-            f"Error sintáctico: se esperaba {tipo_esperado} "
-            f"pero se encontró {tok}"
+            f"Línea ~{self.linea}: se esperaba {tipo_esperado} "
+            f"pero se encontró '{tok_valor}'"
         )
 
     def parsear(self):
@@ -698,7 +746,11 @@ class Parser:
             elif tok[0] == 'KEYWORD':
                 instrucciones.append(self.asignacion())
             elif tok[0] == 'IDENTIFIER':
-                instrucciones.append(self.asignacion_sin_tipo())
+                # Verificar si es un incremento/decremento (i++; o i--;)
+                if self.pos + 1 < len(self.tokens) and self.tokens[self.pos + 1][0] == 'OPERATOR' and self.tokens[self.pos + 1][1] in ['++', '--']:
+                    instrucciones.append(self.incremento_puro())
+                else:
+                    instrucciones.append(self.asignacion_sin_tipo())
             else:
                 raise SyntaxError(f"Instrucción no válida: {tok}")
         return instrucciones
@@ -717,6 +769,13 @@ class Parser:
         expr   = self.expresion()
         self.coincidir('DELIMITER')  # ;
         return NodoAsignacion(None, nombre, expr)
+
+    def incremento_puro(self):
+        """Parsea una instrucción de incremento/decremento (i++; o i--;)."""
+        nombre   = self.coincidir('IDENTIFIER')
+        operador = self.coincidir('OPERATOR')  # ++ o --
+        self.coincidir('DELIMITER')  # ;
+        return NodoIncremento(nombre, operador)
 
     def retorno(self):
         self.coincidir('KEYWORD')
@@ -756,19 +815,24 @@ class Parser:
         return NodoEntrada(keyword, formato, variable)
 
     def if_instr(self):
-        self.coincidir('KEYWORD')
-        self.coincidir('DELIMITER')
+        self.coincidir('KEYWORD')  # if
+        self.coincidir('DELIMITER')  # (
         cond = self.expresion()
-        self.coincidir('DELIMITER')
-        self.coincidir('DELIMITER')
+        self.coincidir('DELIMITER')  # )
+        self.coincidir('DELIMITER')  # {
         cuerpo_if = self.cuerpo()
-        self.coincidir('DELIMITER')
+        self.coincidir('DELIMITER')  # }
         cuerpo_else = None
         if self.obtener_token() and self.obtener_token()[1] == 'else':
-            self.coincidir('KEYWORD')
-            self.coincidir('DELIMITER')
-            cuerpo_else = self.cuerpo()
-            self.coincidir('DELIMITER')
+            self.coincidir('KEYWORD')  # else
+            # Verificar si es else if o else normal
+            if self.obtener_token() and self.obtener_token()[1] == 'if':
+                # else if → parsear como un nuevo if y meterlo en cuerpo_else
+                cuerpo_else = [self.if_instr()]
+            else:
+                self.coincidir('DELIMITER')  # {
+                cuerpo_else = self.cuerpo()
+                self.coincidir('DELIMITER')  # }
         return NodoIf(cond, cuerpo_if, cuerpo_else)
 
     def while_instr(self):
@@ -800,14 +864,37 @@ class Parser:
         return NodoIncremento(nombre, operador)
 
     def expresion(self):
-        izquierda = self.termino()
-        while self.obtener_token() and self.obtener_token()[0] == 'OPERATOR':
-            op     = self.coincidir('OPERATOR')
-            derecha = self.termino()
-            izquierda = NodoOperacion(izquierda, op, derecha)
-        return izquierda
+        """Maneja operadores de comparación (==, !=, <, >, <=, >=)."""
+        izq = self.suma_resta()
+        while self.obtener_token() and self.obtener_token()[0] == 'OPERATOR' \
+              and self.obtener_token()[1] in ['==','!=','<','>','<=','>=']:
+            op = self.coincidir('OPERATOR')
+            der = self.suma_resta()
+            izq = NodoOperacion(izq, op, der)
+        return izq
+
+    def suma_resta(self):
+        """Maneja suma (+) y resta (-)."""
+        izq = self.factor()
+        while self.obtener_token() and self.obtener_token()[0] == 'OPERATOR' \
+              and self.obtener_token()[1] in ['+', '-']:
+            op = self.coincidir('OPERATOR')
+            der = self.factor()
+            izq = NodoOperacion(izq, op, der)
+        return izq
+
+    def factor(self):
+        """Maneja multiplicación (*) y división (/)."""
+        izq = self.termino()
+        while self.obtener_token() and self.obtener_token()[0] == 'OPERATOR' \
+              and self.obtener_token()[1] in ['*', '/']:
+            op = self.coincidir('OPERATOR')
+            der = self.termino()
+            izq = NodoOperacion(izq, op, der)
+        return izq
 
     def termino(self):
+        """Maneja literales e identificadores (números, floats, strings, variables, llamadas de función)."""
         tok = self.obtener_token()
         if not tok:
             raise SyntaxError("Se esperaba un término pero no hay más tokens")
@@ -874,10 +961,29 @@ class AnalizadorSemantico:
         raise Exception(f"Error semántico: '{nombre}' no está definido")
 
     def visitar_NodoPrograma(self, nodo):
+        # Primera pasada: registrar todas las funciones en la tabla global
+        todas = nodo.funciones + ([nodo.main] if nodo.main else [])
+        for f in todas:
+            nombre = f.nombre[1]
+            if nombre in self.pila_tablas[0]:
+                raise Exception(f"Error semántico: función '{nombre}' ya definida")
+            self.pila_tablas[0][nombre] = {
+                'tipo': f.tipo[1],
+                'parametros': f.parametros
+            }
+        # Segunda pasada: analizar cuerpos
         for f in nodo.funciones:
-            self.analizar(f)
+            self.entrar_scope()
+            for p in f.parametros:
+                self.declarar(p.nombre[1], p.tipo[1])
+            for inst in f.cuerpo:
+                self.analizar(inst)
+            self.salir_scope()
         if nodo.main:
-            self.analizar(nodo.main)
+            self.entrar_scope()
+            for inst in nodo.main.cuerpo:
+                self.analizar(inst)
+            self.salir_scope()
 
     def visitar_NodoFuncion(self, nodo):
         nombre = nodo.nombre[1]
@@ -930,21 +1036,29 @@ class AnalizadorSemantico:
 
     def visitar_NodoIf(self, nodo):
         self.analizar(nodo.condicion)
+        self.entrar_scope()
         for c in nodo.cuerpo_if:  self.analizar(c)
+        self.salir_scope()
         if nodo.cuerpo_else:
+            self.entrar_scope()
             for c in nodo.cuerpo_else: self.analizar(c)
+            self.salir_scope()
 
     def visitar_NodoCondicional(self, nodo):
         self.visitar_NodoIf(nodo)
 
     def visitar_NodoWhile(self, nodo):
         self.analizar(nodo.condicion)
+        self.entrar_scope()
         for c in nodo.cuerpo: self.analizar(c)
+        self.salir_scope()
 
     def visitar_NodoFor(self, nodo):
+        self.entrar_scope()
         self.analizar(nodo.inicializacion)
         self.analizar(nodo.condicion)
         for c in nodo.cuerpo: self.analizar(c)
+        self.salir_scope()
 
     def visitar_NodoLlamadaFuncion(self, nodo):
         nf = nodo.nombre_funcion
@@ -1088,6 +1202,8 @@ def simular_echo(arbol):
     """Simula la ejecución del programa y retorna las líneas de salida."""
     output = []
     memoria = {}
+    call_depth = [0]
+    MAX_DEPTH = 50
 
     def evaluar(nodo):
         if isinstance(nodo, NodoNumero):
@@ -1107,18 +1223,29 @@ def simular_echo(arbol):
             if op == '/' and der != 0: return izq // der if isinstance(izq, int) and isinstance(der, int) else izq / der
             return '?'
         if isinstance(nodo, NodoLlamadaFuncion):
+            # Verificar límite de profundidad
+            if call_depth[0] >= MAX_DEPTH:
+                return '?'
             # buscar la funcion en el arbol y ejecutarla
             func = next((f for f in arbol.funciones if f.nombre[1] == nodo.nombre_funcion), None)
             if not func: return '?'
+            call_depth[0] += 1
             mem_local = dict(memoria)
             for param, arg in zip(func.parametros, nodo.argumentos):
                 mem_local[param.nombre[1]] = evaluar(arg)
-            return ejecutar_cuerpo(func.cuerpo, mem_local)
+            resultado = ejecutar_cuerpo(func.cuerpo, mem_local)
+            call_depth[0] -= 1
+            return resultado
         return '?'
 
-    def ejecutar_cuerpo(cuerpo, mem):
+    def ejecutar_cuerpo(cuerpo, mem, redeclaradas=None):
+        if redeclaradas is None:
+            redeclaradas = set()
         for inst in cuerpo:
             if isinstance(inst, NodoAsignacion):
+                # Si tiene tipo, es una redeclaración en este scope
+                if inst.tipo is not None:
+                    redeclaradas.add(inst.nombre[1])
                 val = evaluar_con_mem(inst.expresion, mem)
                 mem[inst.nombre[1]] = val
             elif isinstance(inst, NodoRetorno):
@@ -1129,9 +1256,22 @@ def simular_echo(arbol):
             elif isinstance(inst, NodoIf):
                 cond = evaluar_con_mem(inst.condicion, mem)
                 if cond and cond != '?':
-                    ejecutar_cuerpo(inst.cuerpo_if, mem)
+                    claves_antes = set(mem.keys())
+                    mem_local = dict(mem)
+                    redeclaradas_if = set()
+                    ejecutar_cuerpo(inst.cuerpo_if, mem_local, redeclaradas_if)
+                    # propagar SOLO variables que existían antes Y NO fueron redeclaradas
+                    for k in claves_antes:
+                        if k not in redeclaradas_if and k in mem_local:
+                            mem[k] = mem_local[k]
                 elif inst.cuerpo_else:
-                    ejecutar_cuerpo(inst.cuerpo_else, mem)
+                    claves_antes = set(mem.keys())
+                    mem_local = dict(mem)
+                    redeclaradas_else = set()
+                    ejecutar_cuerpo(inst.cuerpo_else, mem_local, redeclaradas_else)
+                    for k in claves_antes:
+                        if k not in redeclaradas_else and k in mem_local:
+                            mem[k] = mem_local[k]
             elif isinstance(inst, NodoWhile):
                 limite = 100
                 while limite > 0:
@@ -1141,13 +1281,25 @@ def simular_echo(arbol):
                     limite -= 1
             elif isinstance(inst, NodoFor):
                 ejecutar_cuerpo([inst.inicializacion], mem)
+
                 limite = 100
+
                 while limite > 0:
                     cond = evaluar_con_mem(inst.condicion, mem)
-                    if not cond or cond == '?': break
+                    if not cond or cond == '?':
+                        break
+
                     ejecutar_cuerpo(inst.cuerpo, mem)
                     ejecutar_cuerpo([inst.incremento], mem)
+
                     limite -= 1
+
+            elif isinstance(inst, NodoIncremento):
+                val = mem.get(inst.nombre[1], 0)
+                if inst.operador[1] == '++':
+                    mem[inst.nombre[1]] = val + 1
+                elif inst.operador[1] == '--':
+                    mem[inst.nombre[1]] = val - 1
         return None
 
     def evaluar_con_mem(nodo, mem):
@@ -1166,14 +1318,26 @@ def simular_echo(arbol):
             if op == '-': return izq - der
             if op == '*': return izq * der
             if op == '/' and der != 0: return izq // der if isinstance(izq, int) and isinstance(der, int) else izq / der
+            if op == '<':  return 1 if izq < der else 0
+            if op == '>':  return 1 if izq > der else 0
+            if op == '<=': return 1 if izq <= der else 0
+            if op == '>=': return 1 if izq >= der else 0
+            if op == '==': return 1 if izq == der else 0
+            if op == '!=': return 1 if izq != der else 0
             return '?'
         if isinstance(nodo, NodoLlamadaFuncion):
+            if call_depth[0] >= MAX_DEPTH:
+                return '?'
             func = next((f for f in arbol.funciones if f.nombre[1] == nodo.nombre_funcion), None)
             if not func: return '?'
-            mem_local = dict(mem)
-            for param, arg in zip(func.parametros, nodo.argumentos):
-                mem_local[param.nombre[1]] = evaluar_con_mem(arg, mem_local)
-            return ejecutar_cuerpo(func.cuerpo, mem_local)
+            call_depth[0] += 1
+            args_evaluados = [evaluar_con_mem(arg, mem) for arg in nodo.argumentos]
+            mem_local = {}
+            for param, val in zip(func.parametros, args_evaluados):
+                mem_local[param.nombre[1]] = val
+            resultado = ejecutar_cuerpo(func.cuerpo, mem_local)
+            call_depth[0] -= 1
+            return resultado
         return '?'
 
     if arbol.main:
@@ -1213,6 +1377,13 @@ def compilar_codigo(codigo_fuente):
 
     if not tokens:
         resultado['errores'].append('Léxico: no se encontraron tokens')
+        return resultado
+    
+    # Verificar tokens de error
+    tokens_error = [t for t in tokens if t[0] == 'ERROR']
+    if tokens_error:
+        for t in tokens_error:
+            resultado['errores'].append(f'Léxico: carácter no reconocido "{t[1]}"')
         return resultado
 
     # 2. SINTÁCTICO
@@ -1277,6 +1448,13 @@ def ast_a_mermaid(nodo):
     def new_id():
         counter[0] += 1
         return f"N{counter[0]}"
+    
+    def agregar_flecha(desde, hasta, label=None):
+        """Agrega una flecha entre dos nodos, opcionalmente con etiqueta."""
+        if label:
+            lines.append(f'    {desde} -->|{label}| {hasta}')
+        else:
+            lines.append(f'    {desde} --> {hasta}')
 
     def procesar(nodo, padre_id=None):
         if nodo is None:
@@ -1331,29 +1509,73 @@ def ast_a_mermaid(nodo):
             label = expr_label(nodo.condicion)
             lines.append(f'    {nid}{{"{label}"}}')
             lines.append(f'    {prev_id} --> {nid}')
+            
             # rama SI
-            prev_si = nid
-            for inst in nodo.cuerpo_if:
-                prev_si = procesar_inst(inst, prev_si)
+            if nodo.cuerpo_if:
+                si_start = f"N{counter[0]+1}"
+                prev_si = nid
+                for inst in nodo.cuerpo_if:
+                    prev_si = procesar_inst(inst, prev_si)
+                flecha_sin_label = f'    {nid} --> {si_start}'
+                if flecha_sin_label in lines:
+                    lines.remove(flecha_sin_label)
+                agregar_flecha(nid, si_start, "SI")
+            else:
+                prev_si = nid
+            
             # rama NO
             if nodo.cuerpo_else:
+                no_start = f"N{counter[0]+1}"
                 prev_no = nid
                 for inst in nodo.cuerpo_else:
                     prev_no = procesar_inst(inst, prev_no)
-                lines.append(f'    {nid} -->|SI| N{counter[0]-len(nodo.cuerpo_if)}')
-                lines.append(f'    {nid} -->|NO| N{counter[0]-len(nodo.cuerpo_else)+1}')
-            return prev_si
+                flecha_sin_label = f'    {nid} --> {no_start}'
+                if flecha_sin_label in lines:
+                    lines.remove(flecha_sin_label)
+                agregar_flecha(nid, no_start, "NO")
+            else:
+                prev_no = nid
+            
+            # crear end_id AL FINAL cuando counter ya tiene su valor correcto
+            end_id = new_id()
+            lines.append(f'    {end_id}["fin if"]')
+            lines.append(f'    {prev_si} --> {end_id}')
+            
+            if nodo.cuerpo_else:
+                lines.append(f'    {prev_no} --> {end_id}')
+            else:
+                # sin else, flecha NO va directo al fin if
+                lines.append(f'    {nid} -->|NO| {end_id}')
+            
+            return end_id
 
         elif isinstance(nodo, NodoWhile):
             nid = new_id()
             label = expr_label(nodo.condicion)
             lines.append(f'    {nid}{{"{label}"}}')
             lines.append(f'    {prev_id} --> {nid}')
-            prev_w = nid
-            for inst in nodo.cuerpo:
-                prev_w = procesar_inst(inst, prev_w)
-            lines.append(f'    {prev_w} --> {nid}')
-            return nid
+            
+            if nodo.cuerpo:
+                primer_id = f"N{counter[0]+1}"
+                prev_w = nid
+                for inst in nodo.cuerpo:
+                    prev_w = procesar_inst(inst, prev_w)
+                # quitar la flecha sin etiqueta hacia primer_id y reponerla con SI
+                flecha_sin_label = f'    {nid} --> {primer_id}'
+                assert f'    {nid} --> {primer_id}' in lines, \
+                    f"No encontrada: '    {nid} --> {primer_id}'\nLines: {[l for l in lines if primer_id in l]}"
+                if flecha_sin_label in lines:
+                    lines.remove(flecha_sin_label)
+                agregar_flecha(nid, primer_id, "SI")
+            else:
+                prev_w = nid
+            lines.append(f'    {prev_w} --> {nid}')  # back-edge
+            
+            # nodo de salida cuando la condicion es falsa
+            end_id = new_id()
+            lines.append(f'    {end_id}["fin while"]')
+            lines.append(f'    {nid} -->|NO| {end_id}')
+            return end_id
 
         elif isinstance(nodo, NodoFor):
             init_id = procesar_inst(nodo.inicializacion, prev_id)
@@ -1361,17 +1583,39 @@ def ast_a_mermaid(nodo):
             label = expr_label(nodo.condicion)
             lines.append(f'    {cond_id}{{"{label}"}}')
             lines.append(f'    {init_id} --> {cond_id}')
-            prev_f = cond_id
-            for inst in nodo.cuerpo:
-                prev_f = procesar_inst(inst, prev_f)
+            
+            if nodo.cuerpo:
+                primer_id = f"N{counter[0]+1}"
+                prev_f = cond_id
+                for inst in nodo.cuerpo:
+                    prev_f = procesar_inst(inst, prev_f)
+                # quitar la flecha sin etiqueta hacia primer_id y reponerla con SI
+                flecha_sin_label = f'    {cond_id} --> {primer_id}'
+                if flecha_sin_label in lines:
+                    lines.remove(flecha_sin_label)
+                agregar_flecha(cond_id, primer_id, "SI")
+            else:
+                prev_f = cond_id
             inc_id = procesar_inst(nodo.incremento, prev_f)
-            lines.append(f'    {inc_id} --> {cond_id}')
-            return cond_id
+            lines.append(f'    {inc_id} --> {cond_id}')  # back-edge
+            
+            # nodo de salida cuando la condicion es falsa
+            end_id = new_id()
+            lines.append(f'    {end_id}["fin for"]')
+            lines.append(f'    {cond_id} -->|NO| {end_id}')
+            return end_id
 
         elif isinstance(nodo, NodoLlamadaFuncion):
             nid = new_id()
             args = ", ".join(expr_label(a) for a in nodo.argumentos)
             label = f"{nodo.nombre_funcion}({args})"
+            lines.append(f'    {nid}["{label}"]')
+            lines.append(f'    {prev_id} --> {nid}')
+            return nid
+
+        elif isinstance(nodo, NodoIncremento):
+            nid = new_id()
+            label = f"{nodo.nombre[1]}{nodo.operador[1]}"
             lines.append(f'    {nid}["{label}"]')
             lines.append(f'    {prev_id} --> {nid}')
             return nid
@@ -1392,4 +1636,5 @@ def ast_a_mermaid(nodo):
         return "expr"
 
     procesar(nodo)
+    
     return "\n".join(lines)

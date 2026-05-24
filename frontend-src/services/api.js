@@ -84,3 +84,28 @@ export async function ping() {
     return { status: 'offline' }
   }
 }
+
+/**
+ * Ejecuta código ASM compilándolo con nasm y gcc, luego corre el ejecutable.
+ * Recibe el código ASM en string y retorna { ok, output, stderr } o { ok, error }.
+ *
+ * @param {string} asm  - Código ASM (x86 32-bit)
+ * @returns {Promise<{ok: boolean, output?: string, stderr?: string, error?: string}>}
+ */
+export async function ejecutarAsm(asm, stdin = '') {
+  const res = await fetch(`${BASE_URL}/ejecutar_asm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ asm, stdin }),
+  })
+  return res.json()
+}
+
+export async function ejecutarC(codigo, stdin = '') {
+  const res = await fetch(`${BASE_URL}/ejecutar_c`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ codigo, stdin }),
+  })
+  return res.json()
+}

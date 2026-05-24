@@ -27,6 +27,10 @@ Schema de respuesta (v2, usado por compilar_diagrama):
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from compilador_core import compilar_codigo
+import subprocess
+import tempfile
+import shutil
+import os
 
 app = Flask(__name__)
 CORS(app)
@@ -35,6 +39,39 @@ CORS(app)
 # ════════════════════════════════════════════════════════════════════════════
 # ENDPOINT: Compilar código fuente texto
 # ════════════════════════════════════════════════════════════════════════════
+
+@app.route('/api/ejecutar_c', methods=['POST'])
+def ejecutar_c():
+    data = request.get_json(silent=True)
+    if not data or 'codigo' not in data:
+        return jsonify({'ok': False, 'error': 'Falta campo codigo'}), 400
+    
+    import subprocess, tempfile, shutil, os
+    temp_dir = tempfile.mkdtemp()
+    try:
+        c_path  = os.path.join(temp_dir, 'programa.c')
+        exe_path = os.path.join(temp_dir, 'programa')
+        with open(c_path, 'w') as f:
+            f.write('#include <stdio.h>\n')
+            f.write(data['codigo'])
+        result_gcc = subprocess.run(
+            ['gcc', c_path, '-o', exe_path, '-lm'],
+            capture_output=True, text=True
+        )
+        if result_gcc.returncode != 0:
+            return jsonify({'ok': False, 'error': result_gcc.stderr}), 422
+        stdin_data = data.get('stdin', '')
+        result_exe = subprocess.run(
+            [exe_path], input=stdin_data,
+            capture_output=True, text=True, timeout=5
+        )
+        return jsonify({'ok': True, 'output': result_exe.stdout, 'stderr': result_exe.stderr})
+    except subprocess.TimeoutExpired:
+        return jsonify({'ok': False, 'error': 'Timeout'}), 422
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+    finally:
+        shutil.rmtree(temp_dir)
 
 @app.route('/api/compilar', methods=['POST'])
 def compilar():
@@ -536,6 +573,97 @@ def solo_ast():
 def ping():
     """Health-check."""
     return jsonify({'status': 'CYBER_DRIVE API online', 'version': '2.0'})
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ENDPOINT: Ejecutar código ASM
+# ════════════════════════════════════════════════════════════════════════════
+
+@app.route('/api/ejecutar_asm', methods=['POST'])
+def ejecutar_asm():
+    """
+    Recibe {"asm": "...código asm..."}, lo compila con nasm y gcc,
+    y ejecuta el programa resultante, capturando stdout/stderr.
+    """
+    data = request.get_json(silent=True)
+    if not data or 'asm' not in data:
+        return jsonify({
+            'ok': False,
+            'error': 'Se requiere el campo "asm" en el body JSON'
+        }), 400
+    
+    asm_code = data['asm']
+    temp_dir = None
+    
+    try:
+        # Crear directorio temporal
+        temp_dir = tempfile.mkdtemp()
+        asm_path = os.path.join(temp_dir, 'programa.asm')
+        obj_path = os.path.join(temp_dir, 'programa.o')
+        exe_path = os.path.join(temp_dir, 'programa')
+        
+        # Guardar el código ASM
+        with open(asm_path, 'w') as f:
+            f.write(asm_code)
+        
+        # Compilar con nasm
+        result_nasm = subprocess.run(
+            ['nasm', '-f', 'elf32', asm_path, '-o', obj_path],
+            capture_output=True,
+            text=True
+        )
+        
+        if result_nasm.returncode != 0:
+            print(f'NASM ERROR: {result_nasm.stderr}')
+            return jsonify({
+                'ok': False,
+                'error': f'Error en nasm: {result_nasm.stderr}'
+            }), 422
+        
+        # Enlazar con gcc
+        result_gcc = subprocess.run(
+            ['gcc', '-m32', obj_path, '-o', exe_path, '-no-pie', '-nostartfiles'],
+            capture_output=True,
+            text=True
+        )
+        
+        if result_gcc.returncode != 0:
+            print(f'GCC ERROR: {result_gcc.stderr}')
+            return jsonify({
+                'ok': False,
+                'error': f'Error en gcc: {result_gcc.stderr}'
+            }), 422
+        
+        # Ejecutar el programa
+        stdin_data = data.get('stdin', '')
+        result_exe = subprocess.run(
+            [exe_path],
+            input=stdin_data,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        
+        return jsonify({
+            'ok': True,
+            'output': result_exe.stdout,
+            'stderr': result_exe.stderr
+        }), 200
+        
+    except subprocess.TimeoutExpired:
+        return jsonify({
+            'ok': False,
+            'error': 'Timeout: el programa tardó más de 5 segundos'
+        }), 422
+    except Exception as e:
+        return jsonify({
+            'ok': False,
+            'error': f'Error ejecutando ASM: {str(e)}'
+        }), 500
+    finally:
+        # Limpiar directorio temporal
+        if temp_dir and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
 
 
 # ════════════════════════════════════════════════════════════════════════════

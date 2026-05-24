@@ -16,7 +16,7 @@ import TopNavBar       from './components/TopNavBar.jsx'
 import SidebarToolbox  from './components/SidebarToolbox.jsx'
 import MainCanvas      from './components/MainCanvas.jsx'
 import RightSplitPanel from './components/RightSplitPanel.jsx'
-import { compilarCodigo, compilarDiagrama, ping } from './services/api.js'
+import { compilarCodigo, compilarDiagrama, ejecutarC, ping } from './services/api.js'
 import { generateCode } from './utils/codeGenerator.js'
 import './App.css'
 
@@ -263,6 +263,20 @@ export default function App() {
     try {
       const r    = await compilarCodigo(sourceCode)
       const logs = processCompileResponse(r)
+      
+      // Si hay ASM generado, intenta ejecutarlo con nasm+gcc
+      if (r.ok && r.assembler) {
+        try {
+          const exeResult = await ejecutarC(sourceCode, '7\n')
+          if (exeResult.ok) {
+            const lineas = exeResult.output.split('\n').filter(l => l !== '')
+            setEchoOutput(lineas)
+          }
+        } catch (e) {
+          // Si no hay nasm/gcc disponible, se queda con el echo simulado
+        }
+      }
+      
       setConsoleLogs(logs)
     } catch (err) {
       setConsoleLogs([

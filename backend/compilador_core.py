@@ -116,8 +116,9 @@ class NodoPrograma(NodoAST):
         codigo = [
             "extern printf",
             "extern scanf",
+            "extern fflush",
             "section .text",
-            "global _start"
+            "global main"
         ]
         data = [
             "section .data",
@@ -145,14 +146,13 @@ class NodoPrograma(NodoAST):
             for param in funcion.parametros:
                 self.variables.append((param.tipo[1], param.nombre[1]))
 
-        codigo.append("_start:")
+        codigo.append("main:")
         if self.main:
             recolectar_variables(self.main.cuerpo)
             codigo.append(self.main.generarAssembler())
 
-        codigo.append("    mov eax, 1      ; sys_exit")
-        codigo.append("    xor ebx, ebx")
-        codigo.append("    int 0x80")
+        codigo.append("    mov eax, 0")
+        codigo.append("    ret")
 
         for entry in _asm_data:
             if entry not in data:
@@ -348,12 +348,14 @@ class NodoPrint(NodoAST):
             res += "\n    push  fmt_str"
             res += "\n    call  printf"
             res += "\n    add   esp, 8"
+            res += "\n    push  0\n    call  fflush\n    add   esp, 4"
             return res
         res  = self.expresion.generarAssembler()
         res += "\n    push  eax"
         res += "\n    push  fmt_int"
         res += "\n    call  printf"
         res += "\n    add   esp, 8"
+        res += "\n    push  0\n    call  fflush\n    add   esp, 4"
         return res
 
 
@@ -374,12 +376,14 @@ class NodoPrintln(NodoAST):
             res += "\n    push  fmt_str_ln"
             res += "\n    call  printf"
             res += "\n    add   esp, 8"
+            res += "\n    push  0\n    call  fflush\n    add   esp, 4"
             return res
         res  = self.expresion.generarAssembler()
         res += "\n    push  eax"
         res += "\n    push  fmt_int_ln"
         res += "\n    call  printf"
         res += "\n    add   esp, 8"
+        res += "\n    push  0\n    call  fflush\n    add   esp, 4"
         return res
 
 
@@ -430,6 +434,7 @@ class NodoPrintf(NodoAST):
         codigo.append("    call  printf")
         n_args = len(self.argumentos) + 1
         codigo.append(f"    add   esp, {n_args * 4}")
+        codigo.append("    push  0\n    call  fflush\n    add   esp, 4")
         return "\n".join(codigo)
 
 
@@ -1089,7 +1094,12 @@ class Parser:
     def for_instr(self):
         self.coincidir('KEYWORD')    # for
         self.coincidir('DELIMITER')  # (
-        inicio = self.asignacion()   # int i = 0;  (ya consume el ;)
+        # Inicio: puede ser "int i = 0;" o "i = 0;"
+        tok = self.obtener_token()
+        if self.es_tipo(tok):
+            inicio = self.asignacion()   # int i = 0;  (ya consume el ;)
+        else:
+            inicio = self.asignacion_sin_tipo()  # i = 0;  (ya consume el ;)
         cond   = self.expresion()
         self.coincidir('DELIMITER')  # ;
         incr   = self.incremento_for()
@@ -1101,8 +1111,15 @@ class Parser:
 
     def incremento_for(self):
         nombre   = self.coincidir('IDENTIFIER')
-        operador = self.coincidir('OPERATOR')
-        return NodoIncremento(nombre, operador)
+        tok = self.obtener_token()
+        if tok and tok[1] in ('++', '--'):
+            operador = self.coincidir('OPERATOR')
+            return NodoIncremento(nombre, operador)
+        elif tok and tok[1] == '=':
+            # Soporta i = i + 1 como incremento del for
+            self.coincidir('OPERATOR')  # =
+            expr = self.expresion()
+            return NodoAsignacion(None, nombre, expr)
 
     # ── Expresiones ────────────────────────────────────────────────────────
 
@@ -1805,6 +1822,13 @@ def ast_a_mermaid(nodo):
 # PIPELINE PRINCIPAL
 # ─────────────────────────────────────────────
 def compilar_codigo(codigo_fuente):
+    """
+    Ejecuta el pipeline completo y devuelve un dict JSON-serializable con:
+      - tokens, ast, tabla_simbolos
+      - cpp (código fuente tal como viene), assembler
+      - traducciones: python, javascript, ruby, rust
+      - errores (si los hay)
+    """
     resultado = {
         'ok': False,
         'errores': [],
@@ -1881,11 +1905,8 @@ def compilar_codigo(codigo_fuente):
     except Exception as e:
         resultado['mermaid'] = f'flowchart TD\n    ERR["Error: {e}"]'
 
-    # 7. ECHO (simulación)
-    try:
-        resultado['echo'] = simular_echo(arbol)
-    except Exception as e:
-        resultado['echo'] = [f'Error en simulación: {e}']
+    # 7. ECHO (vacío, la ejecución es interactiva en el frontend via websockets)
+    resultado['echo'] = []
 
     resultado['ok'] = len(resultado['errores']) == 0
     return resultado

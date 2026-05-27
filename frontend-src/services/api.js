@@ -4,7 +4,7 @@
 // El frontend NUNCA habla directo al compilador, solo via JSON.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BASE_URL = 'http://localhost:5000/api'
+export const BASE_URL = 'http://localhost:5000/api'
 
 /**
  * Compilación completa desde código fuente texto:

@@ -1,0 +1,285 @@
+/* =============================================================================
+   TerminalModal.css — Consola Interactiva (estilo CYBER_DRIVE)
+   ============================================================================= */
+
+/* ── Overlay ─────────────────────────────────────────────────────────────── */
+.terminal-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(4, 6, 5, 0.85);
+  backdrop-filter: blur(6px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  animation: termFadeIn 0.2s ease;
+}
+
+@keyframes termFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Container ───────────────────────────────────────────────────────────── */
+.terminal-modal-container {
+  width: 72vw;
+  max-width: 860px;
+  height: 62vh;
+  background: linear-gradient(180deg, rgba(15, 19, 26, 0.98), rgba(10, 13, 17, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  box-shadow:
+    0 8px 40px rgba(0, 0, 0, 0.6),
+    0 0 1px rgba(168, 85, 247, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: termSlideUp 0.25s ease;
+}
+
+@keyframes termSlideUp {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.terminal-modal-header {
+  height: 36px;
+  background: rgba(255, 255, 255, 0.035);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.terminal-modal-title {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--acc3);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.terminal-modal-title::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--acc3);
+  box-shadow: 0 0 6px var(--acc3);
+  animation: termPulse 1.5s infinite;
+}
+
+@keyframes termPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+
+.terminal-modal-title.finished::before {
+  background: var(--txt3);
+  box-shadow: none;
+  animation: none;
+}
+
+.terminal-modal-close {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--txt3);
+  font-size: 10px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.terminal-modal-close:hover {
+  background: rgba(244, 63, 94, 0.15);
+  border-color: rgba(244, 63, 94, 0.3);
+  color: var(--err);
+}
+
+/* ── Body (output area) ──────────────────────────────────────────────────── */
+.terminal-modal-body {
+  flex: 1;
+  padding: 12px 14px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--txt);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  background: var(--bg);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.terminal-modal-body::-webkit-scrollbar       { width: 5px; }
+.terminal-modal-body::-webkit-scrollbar-track  { background: transparent; }
+.terminal-modal-body::-webkit-scrollbar-thumb  { background: rgba(255, 255, 255, 0.12); border-radius: 999px; }
+.terminal-modal-body::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+
+/* ── Output line types ───────────────────────────────────────────────────── */
+.term-stdout {
+  color: var(--txt);
+}
+
+.term-stdin {
+  color: var(--acc);
+  font-weight: 700;
+}
+
+.term-info {
+  color: var(--txt3);
+  font-size: 11px;
+  letter-spacing: 0.8px;
+  padding: 3px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.term-info::before {
+  content: '▸';
+  color: var(--acc);
+  font-size: 8px;
+}
+
+.term-err {
+  color: var(--err);
+  background: rgba(244, 63, 94, 0.08);
+  padding: 4px 8px;
+  border-radius: 3px;
+  border-left: 2px solid var(--err);
+  margin: 4px 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.term-exit {
+  color: var(--txt3);
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.term-exit.success::before {
+  content: '●';
+  color: var(--acc3);
+  font-size: 8px;
+}
+
+.term-exit.error::before {
+  content: '●';
+  color: var(--err);
+  font-size: 8px;
+}
+
+/* ── Input line ──────────────────────────────────────────────────────────── */
+.term-input-line {
+  display: inline-flex;
+  align-items: center;
+  min-width: 100px;
+}
+
+.term-input-line::before {
+  content: '❯';
+  color: var(--acc);
+  font-size: 10px;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.term-input {
+  background: transparent;
+  border: none;
+  color: var(--acc3);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  caret-color: var(--acc);
+}
+
+.term-input::placeholder {
+  color: var(--txt3);
+  font-weight: 400;
+}
+
+/* ── Pipeline steps (bottom bar) ─────────────────────────────────────────── */
+.terminal-modal-footer {
+  height: 28px;
+  background: rgba(255, 255, 255, 0.025);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.pipeline-step {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.8px;
+  color: var(--txt3);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pipeline-step .step-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--txt3);
+}
+
+.pipeline-step.active .step-dot {
+  background: var(--acc);
+  box-shadow: 0 0 4px var(--acc);
+  animation: termPulse 1s infinite;
+}
+
+.pipeline-step.done .step-dot {
+  background: var(--acc3);
+  box-shadow: 0 0 4px var(--acc3);
+  animation: none;
+}
+
+.pipeline-step.done {
+  color: var(--acc3);
+}
+
+.pipeline-step.active {
+  color: var(--acc);
+}
+
+.pipeline-arrow {
+  color: rgba(255, 255, 255, 0.12);
+  font-size: 8px;
+}

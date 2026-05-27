@@ -45,9 +45,9 @@ mermaid.initialize({
 })
 
 const MONACO_OPTS = {
-  fontSize: 13,
+  fontSize: 15,
   fontFamily: "'Courier New', monospace",
-  lineHeight: 20,
+  lineHeight: 22,
   minimap: { enabled: false },
   scrollBeyondLastLine: false,
   renderLineHighlight: 'line',

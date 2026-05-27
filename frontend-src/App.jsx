@@ -16,6 +16,7 @@ import TopNavBar       from './components/TopNavBar.jsx'
 import SidebarToolbox  from './components/SidebarToolbox.jsx'
 import MainCanvas      from './components/MainCanvas.jsx'
 import RightSplitPanel from './components/RightSplitPanel.jsx'
+import TerminalModal   from './components/TerminalModal.jsx'
 import { compilarCodigo, compilarDiagrama, ejecutarC, ping } from './services/api.js'
 import { generateCode } from './utils/codeGenerator.js'
 import './App.css'
@@ -55,8 +56,13 @@ export default function App() {
     { type: 'info', text: 'Usa el EDITOR de texto o el FLOWCHART visual y presiona Compilar.' },
   ])
   const [isCompiling,  setIsCompiling]  = useState(false)
-  const [buildStatus,  setBuildStatus]  = useState('VISUAL')
-  const [ramUsage,     setRamUsage]     = useState('64K')
+  const [buildStatus, setBuildStatus] = useState('IDLE')
+  const [ramUsage,    setRamUsage]    = useState('64K')
+  
+  // ── Estado: Terminal Interactiva ────────────────────────────────────────
+  const [isTerminalOpen, setIsTerminalOpen] = useState(false)
+  const [terminalAsm,    setTerminalAsm]    = useState('')
+
   const [serverOnline, setServerOnline] = useState(null)
   const [sidebarW,     setSidebarW]     = useState(140)
   const [rightW,       setRightW]       = useState(320)
@@ -172,86 +178,34 @@ export default function App() {
   }, [])
 
   // ── Procesador genérico de respuesta del backend ─────────────────────────
-  /**
-   * Normaliza la respuesta JSON del compilador (compatible con schema v1 y v2)
-   * y actualiza todos los estados de salida.
-   *
-   * Schema v1 (endpoint /compilar):   errores, cpp, echo, mermaid
-   * Schema v2 (endpoint /compilar_diagrama): errors, c_code, execution_output, mermaid_syntax
-   *
-   * @param {object} r - Respuesta JSON del backend
-   * @returns {Array<{type: string, text: string}>} Líneas para el terminal
-   */
   const processCompileResponse = useCallback((r) => {
-    const logs = []
-
-    // Normalización retrocompatible de nombres de campos
-    const codeOut   = r.c_code           || r.cpp       || ''
-    const errList   = r.errors           || r.errores   || []
-    const execLines = r.execution_output || r.echo      || []
-    const mermaid   = r.mermaid_syntax   || r.mermaid   || ''
-
-    // ── Tokens léxicos ──
-    if (r.tokens?.length) {
-      setTokens(r.tokens)
-      logs.push({ type: 'ok', text: `Léxico: ${r.tokens.length} tokens identificados` })
-    }
-
-    // ── AST sintáctico ──
-    if (r.ast) {
-      setAst(r.ast)
-      logs.push({ type: 'ok', text: 'Sintáctico: AST construido correctamente' })
-    }
-
-    // ── Código C generado ──
-    setCCode(codeOut)
-
-    // ── Errores ──
-    if (errList.length) {
-      errList.forEach(e => logs.push({ type: 'err', text: e }))
-      setErrors(errList)
-      setBuildStatus('ERROR')
-    } else {
-      setErrors([])
-      logs.push({ type: 'ok', text: 'Semántico: sin errores detectados' })
-    }
-
-    // ── Tabla de símbolos ──
-    if (r.tabla_simbolos) {
-      setTablaSimbolos(r.tabla_simbolos)
-      const n = Object.keys(r.tabla_simbolos.global || {}).length
-      logs.push({ type: 'info', text: `Tabla de símbolos: ${n} entrada(s)` })
-    }
-
-    // ── Ensamblador ──
-    if (r.assembler) {
-      setAsmCode(r.assembler)
-      logs.push({ type: 'ok', text: 'Ensamblador: código .s generado' })
-    }
-
-    // ── Traducciones, Mermaid, Salida de ejecución ──
-    if (r.traducciones)  setTraducciones(r.traducciones)
-    if (mermaid)         setMermaidCode(mermaid)
-    if (execLines.length) setEchoOutput(execLines)
-
-    // ── Estado final ──
-    if (r.ok) {
-      logs.push({ type: 'ok', text: '[OK] Compilación y ejecución exitosas' })
-      setBuildStatus('RUN_OK')
-      setRamUsage(Math.round(64 + Math.random() * 32) + 'K')
-    } else {
-      if (buildStatus !== 'ERROR') setBuildStatus('WARN')
-    }
-    logs.push({ type: 'info', text: '> _' })
-    return logs
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+      const logs = []
+      setAsmCode(r.assembler || '')
+      setTokens(r.tokens || [])
+      setAst(r.ast || null)
+      setTablaSimbolos(r.tabla_simbolos || {})
+      setTraducciones(r.traducciones || {})
+      
+      const errList = r.errors || []
+      if (errList.length) {
+        errList.forEach(e => logs.push({ type: 'err', text: e }))
+        setErrors(errList)
+        setBuildStatus('ERROR')
+      } else {
+        setErrors([])
+        logs.push({ type: 'ok', text: '[OK] Compilación exitosa.' })
+        setBuildStatus('RUN_OK')
+        
+        // Abrir terminal interactiva enviando el ASM para NASM → GCC → Ejecutar
+        if (r.assembler) {
+          setTerminalAsm(r.assembler)
+          setIsTerminalOpen(true)
+        }
+      }
+      return logs
+    }, [])
 
   // ── Compilación desde el EDITOR de texto ────────────────────────────────
-  /**
-   * Envía el código fuente del editor Monaco al endpoint /api/compilar.
-   * Compatible con el compilador custom C-like del backend.
-   */
   const handleCompile = useCallback(async () => {
     if (isCompiling) return
     setIsCompiling(true)
@@ -263,19 +217,6 @@ export default function App() {
     try {
       const r    = await compilarCodigo(sourceCode)
       const logs = processCompileResponse(r)
-      
-      // Si hay ASM generado, intenta ejecutarlo con nasm+gcc
-      if (r.ok && r.assembler) {
-        try {
-          const exeResult = await ejecutarC(sourceCode, '7\n')
-          if (exeResult.ok) {
-            const lineas = exeResult.output.split('\n').filter(l => l !== '')
-            setEchoOutput(lineas)
-          }
-        } catch (e) {
-          // Si no hay nasm/gcc disponible, se queda con el echo simulado
-        }
-      }
       
       setConsoleLogs(logs)
     } catch (err) {
@@ -491,6 +432,14 @@ export default function App() {
           buildStatus={buildStatus}
         />
       </div>
+
+      {/* ════ MODAL TERMINAL INTERACTIVA ════ */}
+      {isTerminalOpen && (
+        <TerminalModal 
+          asmCode={terminalAsm} 
+          onClose={() => setIsTerminalOpen(false)} 
+        />
+      )}
     </div>
   )
 }

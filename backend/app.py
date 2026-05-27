@@ -26,6 +26,7 @@ Schema de respuesta (v2, usado por compilar_diagrama):
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_sock import Sock
 from compilador_core import compilar_codigo
 import subprocess
 import tempfile
@@ -34,6 +35,7 @@ import os
 
 app = Flask(__name__)
 CORS(app)
+sock = Sock(app)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -145,6 +147,230 @@ def compilar_diagrama():
         'tabla_simbolos':   resultado.get('tabla_simbolos', {}),
         'traducciones':     resultado.get('traducciones', {}),
     }), (200 if resultado.get('ok') else 422)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ENDPOINT: Modo ASM (Compilar y Ejecutar Ensamblador Puro)
+# ════════════════════════════════════════════════════════════════════════════
+
+@app.route('/api/run_asm', methods=['POST'])
+def run_asm():
+    """
+    Recibe código ensamblador puro y lo ejecuta invocando a gcc.
+    """
+    import tempfile, subprocess, os
+    data = request.get_json(silent=True)
+    if not data or 'asm_code' not in data:
+        return jsonify({
+            'ok': False,
+            'errors': ['Se requiere el campo "asm_code" en el body JSON'],
+            'execution_output': []
+        }), 400
+
+    asm_code = data['asm_code']
+    stdin_data = data.get('stdin', '')
+    
+    execution_output = []
+    ok = False
+
+    try:
+        fd, temp_s = tempfile.mkstemp(suffix='.s')
+        os.close(fd)
+        temp_exe = temp_s.replace('.s', '.exe')
+        
+        with open(temp_s, 'w', encoding='utf-8') as f:
+            f.write(asm_code)
+        
+        gcc_res = subprocess.run(['gcc', '-m32', temp_s, '-o', temp_exe], capture_output=True, text=True)
+        if gcc_res.returncode != 0:
+            execution_output = [f'Error compilando ASM con gcc:'] + gcc_res.stderr.splitlines()
+        else:
+            exe_res = subprocess.run([temp_exe], input=stdin_data, capture_output=True, text=True)
+            lines = exe_res.stdout.splitlines()
+            if exe_res.stderr:
+                lines.extend(exe_res.stderr.splitlines())
+            execution_output = lines
+            ok = True
+        
+        try:
+            if os.path.exists(temp_s): os.remove(temp_s)
+            if os.path.exists(temp_exe): os.remove(temp_exe)
+        except:
+            pass
+
+    except Exception as e:
+        execution_output = [f'Error interno al ejecutar ASM: {str(e)}']
+
+    return jsonify({
+        'ok': ok,
+        'execution_output': execution_output,
+        'errors': [] if ok else execution_output
+    }), (200 if ok else 422)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ENDPOINT: Modo Interactivo via WebSockets
+# ════════════════════════════════════════════════════════════════════════════
+
+@sock.route('/api/ws/run')
+def ws_run(ws):
+    """
+    Recibe JSON inicial: {"asm_code": "..."},
+    pasa por NASM → GCC → Ejecutar.
+    Envía stdout al WebSocket y recibe stdin desde él.
+    """
+    import json, tempfile, os, subprocess, threading, queue, re, shutil
+
+    NASM_PATH = r'C:\Users\Usuario\AppData\Local\bin\NASM\nasm.exe'
+
+    data_str = ws.receive()
+    try:
+        data = json.loads(data_str)
+        asm_code = data.get('asm_code', '')
+    except Exception as e:
+        ws.send(json.dumps({'type': 'err', 'text': 'Datos iniciales inválidos.'}))
+        return
+
+    if not asm_code:
+        ws.send(json.dumps({'type': 'err', 'text': 'No se proporcionó asm_code.'}))
+        return
+
+    # ── Transformar ASM de Linux a Windows/MinGW ──────────────────────────
+    # En Windows/MinGW, las funciones de C llevan prefijo _
+    asm_win = asm_code
+    asm_win = asm_win.replace('extern printf',  'extern _printf')
+    asm_win = asm_win.replace('extern scanf',   'extern _scanf')
+    asm_win = asm_win.replace('extern fflush',  'extern _fflush')
+    asm_win = asm_win.replace('global main',    'global _main')
+    asm_win = re.sub(r'^main:', '_main:', asm_win, flags=re.MULTILINE)
+    asm_win = asm_win.replace('call  printf',   'call  _printf')
+    asm_win = asm_win.replace('call  scanf',    'call  _scanf')
+    asm_win = asm_win.replace('call  fflush',   'call  _fflush')
+    # Eliminar caracteres no-ASCII (unicode dashes ── en comentarios que NASM no entiende)
+    asm_win = asm_win.encode('ascii', errors='ignore').decode('ascii')
+    # Asegurar newline final
+    if not asm_win.endswith('\n'):
+        asm_win += '\n'
+
+    # ── Crear archivos temporales ─────────────────────────────────────────
+    temp_dir = tempfile.mkdtemp()
+    temp_asm = os.path.join(temp_dir, 'programa.asm')
+    temp_obj = os.path.join(temp_dir, 'programa.o')
+    temp_exe = os.path.join(temp_dir, 'programa.exe')
+
+    with open(temp_asm, 'w', encoding='utf-8') as f:
+        f.write(asm_win)
+
+    # ── Paso 1: NASM ─────────────────────────────────────────────────────
+    ws.send(json.dumps({'type': 'info', 'text': 'Ensamblando con NASM...'}))
+    nasm_res = subprocess.run(
+        [NASM_PATH, '-f', 'win32', temp_asm, '-o', temp_obj],
+        capture_output=True, text=True
+    )
+    if nasm_res.returncode != 0:
+        ws.send(json.dumps({'type': 'err', 'text': f'Error en NASM:\n{nasm_res.stderr}'}))
+        ws.send(json.dumps({'type': 'exit', 'code': nasm_res.returncode}))
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        return
+
+    # ── Paso 2: GCC (enlazar) ─────────────────────────────────────────────
+    ws.send(json.dumps({'type': 'info', 'text': 'Enlazando con GCC...'}))
+    gcc_res = subprocess.run(
+        ['gcc', temp_obj, '-o', temp_exe],
+        capture_output=True, text=True
+    )
+    if gcc_res.returncode != 0:
+        ws.send(json.dumps({'type': 'err', 'text': f'Error en GCC:\n{gcc_res.stderr}'}))
+        ws.send(json.dumps({'type': 'exit', 'code': gcc_res.returncode}))
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        return
+
+    # ── Paso 3: Ejecutar ──────────────────────────────────────────────────
+    ws.send(json.dumps({'type': 'info', 'text': 'Ejecutando programa...'}))
+    ws.send(json.dumps({'type': 'clear'}))
+
+    proc = subprocess.Popen(
+        [temp_exe],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        bufsize=0,
+        universal_newlines=False
+    )
+
+    q = queue.Queue()
+
+    def reader_thread():
+        """Lee stdout del proceso y acumula bytes antes de encolarlos."""
+        import time
+        try:
+            while True:
+                # Leer el primer byte (bloqueante — espera a que haya datos)
+                first = proc.stdout.read(1)
+                if not first:
+                    break
+                buf = first
+                # Leer todo lo que esté disponible sin bloquear
+                time.sleep(0.02)  # Dar 20ms para que se llene el buffer
+                import msvcrt, ctypes
+                try:
+                    # Windows: check how many bytes available in pipe
+                    import ctypes.wintypes
+                    kernel32 = ctypes.windll.kernel32
+                    handle = msvcrt.get_osfhandle(proc.stdout.fileno())
+                    avail = ctypes.wintypes.DWORD(0)
+                    if kernel32.PeekNamedPipe(handle, None, 0, None, ctypes.byref(avail), None):
+                        if avail.value > 0:
+                            buf += proc.stdout.read(avail.value)
+                except Exception:
+                    pass
+                q.put(buf.decode('utf-8', errors='replace'))
+        except Exception:
+            pass
+
+    t = threading.Thread(target=reader_thread, daemon=True)
+    t.start()
+
+    try:
+        while proc.poll() is None:
+            # Acumular todo lo que haya en la cola en un solo envío
+            combined = ''
+            while not q.empty():
+                combined += q.get_nowait()
+            if combined:
+                ws.send(json.dumps({'type': 'stdout', 'text': combined}))
+
+            # Recibir datos del frontend (stdin)
+            msg = ws.receive(timeout=0.05)
+            if msg:
+                try:
+                    payload = json.loads(msg)
+                    if payload.get('type') == 'stdin' and proc.stdin:
+                        proc.stdin.write((payload.get('text', '') + '\n').encode('utf-8'))
+                        proc.stdin.flush()
+                except Exception:
+                    pass
+    except Exception:
+        proc.kill()
+
+    t.join(timeout=2)
+
+    # Vaciar cola final
+    combined = ''
+    while not q.empty():
+        combined += q.get_nowait()
+    if combined:
+        ws.send(json.dumps({'type': 'stdout', 'text': combined}))
+
+    code = proc.poll()
+    ws.send(json.dumps({'type': 'exit', 'code': code}))
+
+    try:
+        import time
+        time.sleep(0.1)
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    except:
+        pass
 
 
 # ════════════════════════════════════════════════════════════════════════════

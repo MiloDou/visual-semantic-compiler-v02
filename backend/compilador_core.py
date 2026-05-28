@@ -289,22 +289,24 @@ class NodoOperacion(NodoAST):
         codigo = []
         codigo.append(self.izquierda.generarAssembler())
         codigo.append("    push  eax")
+        codigo.append("    push  ebx")
         codigo.append(self.derecha.generarAssembler())
-        codigo.append("    mov   ebx, eax")
+        codigo.append("    mov   ecx, eax")
+        codigo.append("    pop   ebx")
         codigo.append("    pop   eax")
         op = self.operador[1]
-        if   op == '+': codigo.append("    add   eax, ebx")
-        elif op == '-': codigo.append("    sub   eax, ebx")
-        elif op == '*': codigo.append("    imul  eax, ebx")
+        if   op == '+': codigo.append("    add   eax, ecx")
+        elif op == '-': codigo.append("    sub   eax, ecx")
+        elif op == '*': codigo.append("    imul  eax, ecx")
         elif op == '/':
             codigo.append("    xor   edx, edx")
-            codigo.append("    idiv  ebx")
+            codigo.append("    idiv  ecx")
         elif op == '%':
             codigo.append("    xor   edx, edx")
-            codigo.append("    idiv  ebx")
+            codigo.append("    idiv  ecx")
             codigo.append("    mov   eax, edx")
         elif op in ['==', '!=', '>', '<', '>=', '<=']:
-            codigo.append("    cmp   eax, ebx")
+            codigo.append("    cmp   eax, ecx")
             if op == '==': codigo.append("    sete  al")
             elif op == '!=': codigo.append("    setne al")
             elif op == '>':  codigo.append("    setg  al")
@@ -1694,7 +1696,8 @@ def ast_a_mermaid(nodo):
         elif isinstance(nodo, (NodoPrint, NodoPrintln, NodoPrintf)):
             nid = new_id()
             if isinstance(nodo, NodoPrintf):
-                label = f"printf {expr_label(nodo.formato)}"
+                fmt = nodo.formato.valor[1].strip('"') if hasattr(nodo.formato, 'valor') else '...'
+                label = f"printf {fmt[:20]}"
             else:
                 label = f"print {expr_label(nodo.expresion)}"
             lines.append(f'    {nid}[/"{label}"/]')
@@ -1797,6 +1800,12 @@ def ast_a_mermaid(nodo):
             nid = new_id()
             label = f"{nodo.nombre[1]}{nodo.operador[1]}"
             lines.append(f'    {nid}["{label}"]')
+            lines.append(f'    {prev_id} --> {nid}')
+            return nid
+        elif isinstance(nodo, NodoEntrada):
+            nid = new_id()
+            label = f"scanf {nodo.variable[1]}"
+            lines.append(f'    {nid}[/"{label}"/]')
             lines.append(f'    {prev_id} --> {nid}')
             return nid
         return prev_id

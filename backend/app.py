@@ -221,7 +221,8 @@ def ws_run(ws):
     """
     import json, tempfile, os, subprocess, threading, queue, re, shutil
 
-    NASM_PATH = r'C:\Users\Usuario\AppData\Local\bin\NASM\nasm.exe'
+    NASM_PATH = shutil.which('nasm') or r'C:\Users\Fernanda Navarro\AppData\Local\bin\NASM\nasm.exe'
+    GCC_PATH = shutil.which('gcc') or r'C:\MinGW\bin\gcc.exe'
 
     data_str = ws.receive()
     try:
@@ -276,7 +277,7 @@ def ws_run(ws):
     # ── Paso 2: GCC (enlazar) ─────────────────────────────────────────────
     ws.send(json.dumps({'type': 'info', 'text': 'Enlazando con GCC...'}))
     gcc_res = subprocess.run(
-        ['gcc', temp_obj, '-o', temp_exe],
+        [GCC_PATH, temp_obj, '-o', temp_exe],
         capture_output=True, text=True
     )
     if gcc_res.returncode != 0:

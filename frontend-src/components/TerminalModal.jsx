@@ -37,7 +37,7 @@ export default function TerminalModal({ asmCode, onClose }) {
           else if (text.includes('Ejec')) setStatus('running')
           setOutput(prev => [...prev, { type: 'info', text: msg.text }])
         } else if (msg.type === 'clear') {
-          setOutput([])
+          setOutput(prev => prev.filter(l => l.type !== 'info'))
           setStatus('running')
           if (inputRef.current) inputRef.current.focus()
         } else if (msg.type === 'err') {
@@ -47,11 +47,16 @@ export default function TerminalModal({ asmCode, onClose }) {
           }
         } else if (msg.type === 'stdout') {
           setOutput(prev => {
+            const text = msg.text
+            if (prev.length > 0 && prev[prev.length - 1].type === 'stdout' && 
+                prev[prev.length - 1].text === text) {
+              return prev
+            }
             if (prev.length > 0 && prev[prev.length - 1].type === 'stdout') {
               const newPrev = [...prev]
               newPrev[newPrev.length - 1] = {
                 type: 'stdout',
-                text: newPrev[newPrev.length - 1].text + msg.text
+                text: newPrev[newPrev.length - 1].text + text
               }
               return newPrev
             }

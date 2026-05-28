@@ -186,7 +186,7 @@ export default function App() {
       setTablaSimbolos(r.tabla_simbolos || {})
       setTraducciones(r.traducciones || {})
       
-      const errList = r.errors || []
+      const errList = r.errors || r.errores || []
       if (errList.length) {
         errList.forEach(e => logs.push({ type: 'err', text: e }))
         setErrors(errList)
@@ -198,6 +198,7 @@ export default function App() {
         
         // Abrir terminal interactiva enviando el ASM para NASM → GCC → Ejecutar
         if (r.assembler) {
+          setEchoOutput([])
           setTerminalAsm(r.assembler)
           setIsTerminalOpen(true)
         }

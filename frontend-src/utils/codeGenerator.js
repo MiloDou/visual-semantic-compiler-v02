@@ -55,12 +55,18 @@ function buildAdj(edges) {
 }
 
 /** Detecta si una etiqueta de arista corresponde a la rama "NO/falsa". */
-const isNoLabel = (label = '') =>
-  ['NO', 'FALSE', 'N'].includes(label.trim().toUpperCase())
+const isNoLabel = (label = '') => {
+  const upper = (label || '').trim().toUpperCase()
+  return ['NO', 'FALSE', 'N'].includes(upper) || 
+         /\b(NO|FALSE|N)\b/.test(upper)
+}
 
 /** Detecta si una etiqueta de arista corresponde a la rama "SI/verdadera". */
-const isSiLabel = (label = '') =>
-  ['SI', 'YES', 'TRUE', 'S', 'SÍ'].includes(label.trim().toUpperCase())
+const isSiLabel = (label = '') => {
+  const upper = (label || '').trim().toUpperCase()
+  return ['SI', 'YES', 'TRUE', 'S', 'SÍ'].includes(upper) || 
+         /\b(SI|SÍ|YES|TRUE|S)\b/.test(upper)
+}
 
 // ─── Generador de código C ────────────────────────────────────────────────────
 
@@ -134,7 +140,6 @@ function generateCCode(nodes, edges) {
     const localSeen = new Set()
     let depth = maxDepth
     while (cur && cur !== stopId && !localSeen.has(cur) && depth-- > 0) {
-      if (visited.has(cur) && cur !== stopId) break
       localSeen.add(cur)
       const next = emitNode(cur, indent, stopId)
       if (next === null || next === undefined) break
@@ -258,20 +263,25 @@ function generateCCode(nodes, edges) {
         // Es un IF/ELSE
         lines.push(`${pad}if (${expr}) {`)
 
-        // Encontrar nodo de convergencia
         const joinNode = findJoinNode(siTarget, noTarget)
 
-        if (siTarget && !visited.has(siTarget)) {
+        // Emitir rama SI — temporalmente sacar siTarget de visited para que emitNode lo procese
+        if (siTarget) {
+          visited.delete(siTarget)
           emitBlock(siTarget, joinNode, indent + 1)
         }
-        if (noTarget && !visited.has(noTarget)) {
+
+        // Emitir rama NO (else) — siempre emitirla si noTarget existe
+        if (noTarget) {
           lines.push(`${pad}} else {`)
+          visited.delete(noTarget)
           emitBlock(noTarget, joinNode, indent + 1)
         }
+
         lines.push(`${pad}}`)
 
-        // Continuar desde el nodo de convergencia
-        if (joinNode && !visited.has(joinNode)) {
+        if (joinNode) {
+          visited.delete(joinNode)
           return joinNode
         }
         return null

@@ -185,6 +185,7 @@ export default function App() {
       setAst(r.ast || null)
       setTablaSimbolos(r.tabla_simbolos || {})
       setTraducciones(r.traducciones || {})
+      if (r.mermaid) setMermaidCode(r.mermaid)
       
       const errList = r.errors || r.errores || []
       if (errList.length) {

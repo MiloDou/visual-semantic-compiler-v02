@@ -322,18 +322,29 @@ function NodeEditor({ nodeId, shape, data, onSave, onClose }) {
               <input
                 ref={inputRef}
                 placeholder={meta.hint}
-                value={label === 'I/O' || label === 'imprimir' || label === 'IMPRIMIR' ? '' : label}
+                value={label.startsWith('"') ? '' : (label === 'I/O' || label === 'imprimir' || label === 'IMPRIMIR' ? '' : label)}
                 onChange={e => setLabel(e.target.value)}
                 onKeyDown={handleKey}
               />
             </div>
+            {shape === 'print' && (
+              <div className="ned-row">
+                <label>Mensaje</label>
+                <input
+                  placeholder='Ej: "Hola mundo"'
+                  value={label.startsWith('"') ? label : ''}
+                  onChange={e => setLabel(e.target.value)}
+                  onKeyDown={handleKey}
+                />
+              </div>
+            )}
             <div className="ned-hint-txt">
               {shape === 'print'
-                ? 'Escribe el nombre de la variable a imprimir.'
+                ? 'Escribe una variable (ej: n) o un mensaje entre comillas (ej: "Hola").'
                 : 'Escribe: leer n  (para entrada) o el nombre de variable a mostrar.'
               }
             </div>
-            <div className="ned-preview">{`println ${label || meta.hint || 'n'};`}</div>
+            <div className="ned-preview">{label.startsWith('"') ? `println ${label};` : `println ${label || 'n'};`}</div>
           </div>
         )}
 

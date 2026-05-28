@@ -1670,6 +1670,7 @@ def ast_a_mermaid(nodo):
             nid = new_id()
             label = f"func: {nodo.nombre[1]}()"
             lines.append(f'    {nid}(["{label}"])')
+            lines.append(f'    style {nid} fill:#134e4a,stroke:#4ade80,color:#86efac')
             if padre_id:
                 lines.append(f'    {padre_id} --> {nid}')
             prev = nid
@@ -1685,12 +1686,14 @@ def ast_a_mermaid(nodo):
             expr = expr_label(nodo.expresion)
             label = f"{nodo.nombre[1]} = {expr}"
             lines.append(f'    {nid}["{label}"]')
+            lines.append(f'    style {nid} fill:#0c1a2e,stroke:#06b6d4,color:#a5f3fc')
             lines.append(f'    {prev_id} --> {nid}')
             return nid
         elif isinstance(nodo, NodoRetorno):
             nid = new_id()
             label = f"return {expr_label(nodo.expresion)}"
             lines.append(f'    {nid}["{label}"]')
+            lines.append(f'    style {nid} fill:#134e4a,stroke:#4ade80,color:#86efac')
             lines.append(f'    {prev_id} --> {nid}')
             return nid
         elif isinstance(nodo, (NodoPrint, NodoPrintln, NodoPrintf)):
@@ -1701,6 +1704,7 @@ def ast_a_mermaid(nodo):
             else:
                 label = f"print {expr_label(nodo.expresion)}"
             lines.append(f'    {nid}[/"{label}"/]')
+            lines.append(f'    style {nid} fill:#1e1b4b,stroke:#7c3aed,color:#c084fc')
             lines.append(f'    {prev_id} --> {nid}')
             return nid
         elif isinstance(nodo, NodoInstruccion):
@@ -1708,12 +1712,14 @@ def ast_a_mermaid(nodo):
             args = ", ".join(expr_label(a) for a in nodo.argumentos_instruccion)
             label = f"cout {args}"
             lines.append(f'    {nid}[/"{label}"/]')
+            lines.append(f'    style {nid} fill:#1e1b4b,stroke:#7c3aed,color:#c084fc')
             lines.append(f'    {prev_id} --> {nid}')
             return nid
         elif isinstance(nodo, NodoIf):
             nid = new_id()
             label = expr_label(nodo.condicion)
             lines.append(f'    {nid}{{"{label}"}}')
+            lines.append(f'    style {nid} fill:#1e1b4b,stroke:#a855f7,color:#c084fc')
             lines.append(f'    {prev_id} --> {nid}')
             if nodo.cuerpo_if:
                 si_start = f"N{counter[0]+1}"
@@ -1739,6 +1745,7 @@ def ast_a_mermaid(nodo):
                 prev_no = nid
             end_id = new_id()
             lines.append(f'    {end_id}["fin if"]')
+            lines.append(f'    style {end_id} fill:#0c1a2e,stroke:#06b6d4,color:#a5f3fc')
             lines.append(f'    {prev_si} --> {end_id}')
             if nodo.cuerpo_else:
                 lines.append(f'    {prev_no} --> {end_id}')
@@ -1749,6 +1756,7 @@ def ast_a_mermaid(nodo):
             nid = new_id()
             label = expr_label(nodo.condicion)
             lines.append(f'    {nid}{{"{label}"}}')
+            lines.append(f'    style {nid} fill:#1e1b4b,stroke:#a855f7,color:#c084fc')
             lines.append(f'    {prev_id} --> {nid}')
             if nodo.cuerpo:
                 primer_id = f"N{counter[0]+1}"
@@ -1764,6 +1772,7 @@ def ast_a_mermaid(nodo):
             lines.append(f'    {prev_w} --> {nid}')
             end_id = new_id()
             lines.append(f'    {end_id}["fin while"]')
+            lines.append(f'    style {end_id} fill:#0c1a2e,stroke:#06b6d4,color:#a5f3fc')
             lines.append(f'    {nid} -->|NO| {end_id}')
             return end_id
         elif isinstance(nodo, NodoFor):
@@ -1771,6 +1780,7 @@ def ast_a_mermaid(nodo):
             cond_id = new_id()
             label = expr_label(nodo.condicion)
             lines.append(f'    {cond_id}{{"{label}"}}')
+            lines.append(f'    style {cond_id} fill:#1e1b4b,stroke:#a855f7,color:#c084fc')
             lines.append(f'    {init_id} --> {cond_id}')
             if nodo.cuerpo:
                 primer_id = f"N{counter[0]+1}"
@@ -1787,6 +1797,7 @@ def ast_a_mermaid(nodo):
             lines.append(f'    {inc_id} --> {cond_id}')
             end_id = new_id()
             lines.append(f'    {end_id}["fin for"]')
+            lines.append(f'    style {end_id} fill:#0c1a2e,stroke:#06b6d4,color:#a5f3fc')
             lines.append(f'    {cond_id} -->|NO| {end_id}')
             return end_id
         elif isinstance(nodo, NodoLlamadaFuncion):
@@ -1794,18 +1805,28 @@ def ast_a_mermaid(nodo):
             args = ", ".join(expr_label(a) for a in nodo.argumentos)
             label = f"{nodo.nombre_funcion}({args})"
             lines.append(f'    {nid}["{label}"]')
+            lines.append(f'    style {nid} fill:#0c1a2e,stroke:#06b6d4,color:#a5f3fc')
             lines.append(f'    {prev_id} --> {nid}')
             return nid
         elif isinstance(nodo, NodoIncremento):
             nid = new_id()
             label = f"{nodo.nombre[1]}{nodo.operador[1]}"
             lines.append(f'    {nid}["{label}"]')
+            lines.append(f'    style {nid} fill:#0c1a2e,stroke:#06b6d4,color:#a5f3fc')
             lines.append(f'    {prev_id} --> {nid}')
             return nid
         elif isinstance(nodo, NodoEntrada):
             nid = new_id()
             label = f"scanf {nodo.variable[1]}"
             lines.append(f'    {nid}[/"{label}"/]')
+            lines.append(f'    style {nid} fill:#1e1b4b,stroke:#7c3aed,color:#c084fc')
+            lines.append(f'    {prev_id} --> {nid}')
+            return nid
+        else:
+            nid = new_id()
+            label = type(nodo).__name__.replace('Nodo', '')
+            lines.append(f'    {nid}["{label}"]')
+            lines.append(f'    style {nid} fill:#0c1a2e,stroke:#06b6d4,color:#a5f3fc')
             lines.append(f'    {prev_id} --> {nid}')
             return nid
         return prev_id
